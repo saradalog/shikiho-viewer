@@ -161,6 +161,8 @@ details.f div{font-size:12.5px;color:var(--muted);padding-top:6px;display:grid;g
       <option value="yld">配当利回り 高い順</option>
       <option value="opg">予想営業増益率 高い順</option>
       <option value="opm">予想営業利益率 高い順</option>
+      <option value="shy">株主還元利回り 高い順</option>
+      <option value="pick">割安×高還元（おすすめ）を先に</option>
     </select>
   </div>
   <div class="chips" role="group" aria-label="絞り込み">
@@ -192,10 +194,16 @@ function prep(){
     const L=s.l||[]; const g=n=>L[col('list',n)];
     s._per=g('今期予想PER（倍）'); s._pbr=g('PBR（倍）'); s._yld=g('配当利回り上限'); s._opg=g('予想営業増益率対直近実績');
     s._rvg=g('予想増収率対直近実績'); s._opm=g('今期予想営業利益率'); s._px=g('株価（円）');
+    // 株主還元利回り（配当＋自社株買い）。列が無いときは配当利回りだけで代用
+    const sy=g('株主還元利回り（配当＋自社株買い）'); s._shy=isNum(sy)?sy:(isNum(s._yld)?s._yld:null); s._shySrc=isNum(sy)?'':'配当のみ';
     s._key=(s.code+' '+(s.name||'')).toLowerCase().normalize('NFKC');
     s._has=isNum(s._px);
   }
   fitC2();
+  // 黒字続きの銘柄の中での還元利回りの中央値（検証のK2：割安上位のうち還元利回りが中央値以上）
+  const ys=D.s.map(x=>{const i=inputs(x);return i&&i.good&&isNum(x._shy)?x._shy:null}).filter(isNum).sort((a,b)=>a-b);
+  SHY_MED=ys.length?ys[Math.floor(ys.length/2)]:null;
+  for(const x of D.s){const t=theo(x); x._pick=!!(t&&t.pick);}
   const b=document.getElementById('brand-sub'); if(b) b.textContent='J-Quants最新・'+D.s.length.toLocaleString()+'銘柄';
 }
 
@@ -204,7 +212,7 @@ function filtered(){
   let a=D.s.filter(s=>(!q||s._key.includes(q))&&(!flt.num||s._has)&&(!flt.yld||(isNum(s._yld)&&s._yld>=0.03))&&(!flt.up||(isNum(s._opg)&&s._opg>0&&isNum(s._rvg)&&s._rvg>0)));
   const k=sortEl.value, asc=(f)=>(x,y)=>{const a=x[f],b=y[f];const na=!isNum(a)||(f==='_per'&&a<=0),nb=!isNum(b)||(f==='_per'&&b<=0);if(na&&nb)return 0;if(na)return 1;if(nb)return -1;return a-b};
   const desc=(f)=>(x,y)=>{const a=x[f],b=y[f];if(!isNum(a)&&!isNum(b))return 0;if(!isNum(a))return 1;if(!isNum(b))return -1;return b-a};
-  if(k==='per')a.sort(asc('_per')); else if(k==='pbr')a.sort(asc('_pbr')); else if(k==='yld')a.sort(desc('_yld')); else if(k==='opg')a.sort(desc('_opg')); else if(k==='opm')a.sort(desc('_opm'));
+  if(k==='per')a.sort(asc('_per')); else if(k==='pbr')a.sort(asc('_pbr')); else if(k==='yld')a.sort(desc('_yld')); else if(k==='opg')a.sort(desc('_opg')); else if(k==='opm')a.sort(desc('_opm')); else if(k==='shy')a.sort(desc('_shy')); else if(k==='pick')a.sort((x,y)=>(y._pick-x._pick)||((isNum(y._shy)?y._shy:-1)-(isNum(x._shy)?x._shy:-1)));
   return a;
 }
 
@@ -212,10 +220,10 @@ function renderList(){
   const a=filtered(); const rec=store.get('shk-recent',[]).filter(c=>BY[c]);
   let h='';
   if(rec.length && !qEl.value) h+='<div class="recent"><span class="small">最近見た銘柄：</span>'+rec.map(c=>'<a href="#s-'+esc(c)+'">'+esc(c)+' '+esc(BY[c].name)+'</a>').join('')+'</div>';
-  h+='<div class="meta">'+a.length.toLocaleString()+'銘柄'+(a.length>shown?'（先頭'+shown+'件を表示）':'')+'　株価・指標は紙面掲載時点</div>';
+  h+='<div class="meta">'+a.length.toLocaleString()+'銘柄'+(a.length>shown?'（先頭'+shown+'件を表示）':'')+'　株価は前営業日終値（J-Quants）</div>';
   if(!a.length){app.innerHTML=h+'<div class="empty">該当する銘柄がありません。検索語や絞り込みを変えてください。</div>';return}
   h+='<ul class="list">'+a.slice(0,shown).map(s=>'<li><a href="#s-'+esc(s.code)+'"><span class="code">'+esc(s.code)+'</span><span class="nm">'+esc(s.name)+'</span><span class="px num">'+(s._has?fm(s._px,0)+'円':'<span class="small">数値未判読</span>')+'</span>'+
-    (s._has?'<span class="sub num"><span>PER <b>'+(isNum(s._per)?s._per.toFixed(1):'—')+'</b></span><span>PBR <b>'+(isNum(s._pbr)?s._pbr.toFixed(2):'—')+'</b></span><span>利回り <b>'+pc(s._yld)+'</b></span><span>営業増益 <b>'+pc(s._opg)+'</b></span></span>':'')+'</a></li>').join('')+'</ul>';
+    (s._has?'<span class="sub num"><span>PER <b>'+(isNum(s._per)?s._per.toFixed(1):'—')+'</b></span><span>PBR <b>'+(isNum(s._pbr)?s._pbr.toFixed(2):'—')+'</b></span><span>利回り <b>'+pc(s._yld)+'</b></span><span>営業増益 <b>'+pc(s._opg)+'</b></span><span>還元 <b>'+pc(s._shy)+'</b></span>'+(s._pick?'<span class="pill buy">割安×高還元</span>':'')+'</span>':'')+'</a></li>').join('')+'</ul>';
   if(a.length>shown) h+='<button class="more" id="more">さらに100件を表示</button>';
   app.innerHTML=h; const m=document.getElementById('more'); if(m) m.onclick=()=>{shown+=100;renderList()};
 }
@@ -299,7 +307,7 @@ function renderDetail(code){
 //   過去3期の実績EPSと今期予想EPSがすべて黒字の銘柄だけを「対象」とし、それ以外は参考値。
 // 確認：業種内回帰。17業種ごとに 対数PBR ＝ a＋b×予想ROE＋c×予想EPS伸び率＋d×ROEのぶれ＋e×対数時価総額 を当てはめ、付くはずのPBR×BPS。
 // 検証（fair-value-backtest）では、この2つで割安な銘柄の5年後リターン中央値が元の版より約8ポイント高かった。
-let SEC=null;
+let SEC=null, SHY_MED=null;
 const clip=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));
 function inputs(s){
   if(s._in!==undefined) return s._in;
@@ -327,8 +335,10 @@ function theo(s){
   const v=rim(x.bps,x.roe,r,x.payout); if(!(v>0)) return null;
   const c2=s._c2;
   const cheapA=isNum(x.px)&&x.px<v, cheapC=isNum(x.px)&&isNum(c2)&&x.px<c2;
+  const shy=s._shy, shyHi=isNum(shy)&&isNum(SHY_MED)&&shy>=SHY_MED;
+  const pick=x.good&&cheapA&&shyHi;
   const verdict=!x.good?'対象外（赤字期あり・参考値）':cheapA&&cheapC?'両方で割安':cheapA?'残余利益で割安（業種内では割高）':cheapC?'業種内では割安（残余利益では割高）':'割高';
-  return {value:Math.round(v),r,c2:isNum(c2)?Math.round(c2):null,verdict,...x};
+  return {value:Math.round(v),r,c2:isNum(c2)?Math.round(c2):null,verdict,shy,shyHi,pick,...x};
 }
 // 業種内回帰：データを読み込んだときに1回だけ全銘柄で当てはめる
 function solve(A,y){ // 正規方程式 (A'A)β=A'y をガウスの消去法で解く
@@ -442,7 +452,7 @@ function renderWatch(kind){
     const pos=(isNum(o.px)&&isNum(o.theo)&&o.theo>0)?Math.max(0,Math.min(100,o.px/o.theo/ (2) *100)):null;
     const sl=(isNum(o.mult))?Math.min(100,o.mult/2*100):60;
     return '<a class="wrow" href="#s-'+esc(o.code)+'"><span class="code">'+esc(o.code)+'</span><span class="nm">'+esc(o.name)+'</span><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span>'+
-    '<span class="sub num"><span>株価 <b>'+fm(o.px,0)+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,0)+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,0)+'</b></span></span>'+
+    '<span class="sub num">'+(o.judge==='買い検討'&&BY[o.code]&&BY[o.code]._pick?'<span class="pill buy">割安×高還元</span>':'')+(BY[o.code]&&isNum(BY[o.code]._shy)?'<span>還元 <b>'+pc(BY[o.code]._shy)+'</b></span>':'')+'<span>株価 <b>'+fm(o.px,0)+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,0)+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,0)+'</b></span></span>'+
     (pos!=null?'<span class="bar" aria-hidden="true"><b style="left:0;width:50%;background:var(--buy-soft)"></b><b style="left:'+sl+'%;right:0;background:var(--sell-soft)"></b><i style="left:'+pos+'%"></i></span>':'')+
     (memoBody(o)?'<span class="sub">'+esc(memoBody(o))+'</span>':'')+'</a>'}).join('')+'</div>';
   h+='<p class="small">株価は株探から取得。取れないときは「（終値）」としてJ-Quantsの前営業日終値で判定。帯の左半分が理論株価未満（買い検討）、右の色付き部分が売り検討ライン超え。<a href="'+SHEET_URL+'">スプレッドシートを開く</a></p>';
@@ -454,6 +464,7 @@ function watchBox(code){
   h+='<div class="big num"><div><span>自動理論株価</span><b>'+(t?fm(t.value,0)+'円':'—')+'</b></div>'+
      (o?'<div><span>採用理論株価</span><b>'+fm(o.theo,0)+'円</b></div><div><span>現在株価</span><b>'+fm(o.px,0)+'円</b></div><div><span>判定</span><b><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span></b></div>':
        (t&&isNum(s._px)?'<div><span>紙面株価との差</span><b>'+pc(s._px/t.value-1)+'</b></div>':''))+'</div>';
+  if(t) h+='<p class="small" style="margin:0">'+(t.pick?'<span class="pill buy">割安×高還元</span> ':'')+'株主還元利回り <b class="num">'+pc(t.shy)+'</b>'+(s._shySrc?'（'+s._shySrc+'）':'')+'　黒字続きの銘柄の中央値 '+pc(SHY_MED)+'（'+(t.shyHi?'以上':'未満')+'）</p>';
   if(t) h+='<p class="small" style="margin:0">判定：<b>'+esc(t.verdict)+'</b>　業種内回帰の理論株価 <b class="num">'+(t.c2?fm(t.c2,0)+'円':'—')+'</b></p>'+
     '<details class="f"><summary>計算の内訳</summary><div class="num">'+
     '<span>残余利益：1株純資産 '+fm(t.bps,1)+'円 ＋ 10年分の超過利益（'+t.epsSrc+' '+fm(t.eps,1)+'円 → ROE '+pc(t.roe)+'、資本コスト '+pc(t.r,0)+'、配当性向 '+pc(t.payout,0)+'）</span>'+
