@@ -193,6 +193,7 @@ function prep(){
     s._key=(s.code+' '+(s.name||'')).toLowerCase().normalize('NFKC');
     s._has=isNum(s._px);
   }
+  fitC2();
 }
 
 function filtered(){
@@ -289,20 +290,61 @@ function renderDetail(code){
   app.innerHTML=h; window.scrollTo(0,0);
 }
 
-// ===== 理論株価（簡易：資産価値＋事業価値） =====
-function theo(s){
+// ===== 理論株価（2026-11 検証の採用案） =====
+// 本体：残余利益モデル。BPS＋（ROE−資本コスト）×BPS を、ROEが10年かけて資本コストへ戻る前提で割引合計。
+//   資本コストは規模で変える（時価総額2,500億円以上6%・300億円以上8%・それ未満10%）。
+//   過去3期の実績EPSと今期予想EPSがすべて黒字の銘柄だけを「対象」とし、それ以外は参考値。
+// 確認：業種内回帰。17業種ごとに 対数PBR ＝ a＋b×予想ROE＋c×予想EPS伸び率＋d×ROEのぶれ＋e×対数時価総額 を当てはめ、付くはずのPBR×BPS。
+// 検証（fair-value-backtest）では、この2つで割安な銘柄の5年後リターン中央値が元の版より約8ポイント高かった。
+let SEC=null;
+const clip=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));
+function inputs(s){
+  if(s._in!==undefined) return s._in;
   const F=(s.f||[])[0]||[]; const gf=n=>F[col('fin',n)]; const L=s.l||[]; const g=n=>L[col('list',n)];
-  const bps=gf('1株純資産（円）'), eqr=gf('自己資本比率');
+  const bps=gf('1株純資産（円）'), px=s._px;
+  const act=(s.y||[]).filter(r=>r[col('years','区分')]==='実績'&&isNum(r[col('years','EPS（円）')])).map(r=>r[col('years','EPS（円）')]);
   let eps=g('今期予想EPS（円）'), epsSrc='今期予想EPS';
-  if(!isNum(eps)){const a=(s.y||[]).filter(r=>r[col('years','区分')]==='実績'&&isNum(r[col('years','EPS（円）')]));if(a.length){eps=a[a.length-1][col('years','EPS（円）')];epsSrc='直近実績EPS'}}
-  let roe=gf('ROE 予想'), roeSrc='ROE予想'; if(!isNum(roe)){roe=gf('ROE 実績');roeSrc='ROE実績'}
-  if(!isNum(bps)||!isNum(eqr)||eqr<=0) return null;
-  const rate=eqr>=0.8?0.8:eqr>=0.67?0.75:eqr>=0.5?0.7:eqr>=0.33?0.65:eqr>=0.1?0.6:0.5;
-  const asset=Math.max(0,bps*rate);
-  const roeC=isNum(roe)?Math.min(Math.max(roe,0),0.4):0;
-  const corr=1/(1+(1/eqr-1)*0.33);
-  const biz=(isNum(eps)&&eps>0)?eps*roeC*150*corr:0;
-  return {value:Math.round(asset+biz),asset:Math.round(asset),biz:Math.round(biz),bps,eqr,rate,eps,epsSrc,roe,roeSrc,roeC,corr};
+  if(!isNum(eps)&&act.length){eps=act[act.length-1];epsSrc='直近実績EPS'}
+  if(!isNum(bps)||bps<=0||!isNum(eps)) return s._in=null;
+  const np=g('今期予想純利益（百万円）');
+  const mcap=(isNum(px)&&isNum(np)&&eps!==0&&np/eps>0)?px*np*1e6/eps:null;
+  const dps=g('今期配当上限（円）');
+  const last=act.length?act[act.length-1]:null;
+  const hist=act.slice(-5).map(e=>e/bps);
+  let sd=null; if(hist.length>=2){const m=hist.reduce((a,b)=>a+b,0)/hist.length; sd=clip(Math.sqrt(hist.reduce((a,b)=>a+(b-m)*(b-m),0)/hist.length),0,0.3)}
+  return s._in={bps,eps,epsSrc,px,mcap,dps,roe:clip(eps/bps,-0.5,0.6),
+    payout:eps>0&&isNum(dps)?clip(dps/eps,0,1):0.3,
+    good:act.length>=3&&act.slice(-3).every(e=>e>0)&&eps>0,
+    g:isNum(last)&&last>0?clip(eps/last-1,-0.5,1):null, sd};
+}
+function rim(bps,roe0,r,payout){let v=bps,b=bps;for(let t=1;t<=10;t++){const rt=r+(roe0-r)*(10-t+1)/10;v+=(rt-r)*b/Math.pow(1+r,t);b*=1+rt*(1-payout)}return v}
+function theo(s){
+  const x=inputs(s); if(!x) return null;
+  const r=!isNum(x.mcap)?0.08:x.mcap>=2.5e11?0.06:x.mcap>=3e10?0.08:0.10;
+  const v=rim(x.bps,x.roe,r,x.payout); if(!(v>0)) return null;
+  const c2=s._c2;
+  const cheapA=isNum(x.px)&&x.px<v, cheapC=isNum(x.px)&&isNum(c2)&&x.px<c2;
+  const verdict=!x.good?'対象外（赤字期あり・参考値）':cheapA&&cheapC?'両方で割安':cheapA?'残余利益で割安（業種内では割高）':cheapC?'業種内では割安（残余利益では割高）':'割高';
+  return {value:Math.round(v),r,c2:isNum(c2)?Math.round(c2):null,verdict,...x};
+}
+// 業種内回帰：データを読み込んだときに1回だけ全銘柄で当てはめる
+function solve(A,y){ // 正規方程式 (A'A)β=A'y をガウスの消去法で解く
+  const k=A[0].length, M=[...Array(k)].map(()=>Array(k+1).fill(0));
+  for(let i=0;i<A.length;i++) for(let p=0;p<k;p++){ for(let q=0;q<k;q++) M[p][q]+=A[i][p]*A[i][q]; M[p][k]+=A[i][p]*y[i]; }
+  for(let p=0;p<k;p++){ let m=p; for(let i=p+1;i<k;i++) if(Math.abs(M[i][p])>Math.abs(M[m][p])) m=i; [M[p],M[m]]=[M[m],M[p]];
+    if(Math.abs(M[p][p])<1e-12) return null; for(let i=0;i<k;i++) if(i!==p){const f=M[i][p]/M[p][p]; for(let q=p;q<=k;q++) M[i][q]-=f*M[p][q]} }
+  return M.map((row,p)=>row[k]/M[p][p]);
+}
+function fitC2(){
+  const rows=[]; for(const s of D.s){ s._c2=null; const x=inputs(s);
+    if(!x||!isNum(x.px)||!isNum(x.mcap)||x.g==null||x.sd==null) continue;
+    const sec=SEC&&SEC.c[s.code]!=null?SEC.c[s.code]:'all';
+    rows.push({s,sec,X:[1,clip(x.roe,-0.2,0.4),x.g,x.sd,Math.log(x.mcap)],y:Math.log(x.px/x.bps)}); }
+  const groups={}; for(const r of rows){(groups[r.sec]=groups[r.sec]||[]).push(r)}
+  const small=[]; const fit=g=>{ const ys=g.map(r=>r.y).sort((a,b)=>a-b), lo=ys[Math.floor(ys.length*0.02)], hi=ys[Math.ceil(ys.length*0.98)-1];
+    const b=solve(g.map(r=>r.X),g.map(r=>clip(r.y,lo,hi))); if(b) for(const r of g) r.s._c2=r.s._in.bps*Math.exp(r.X.reduce((a,v,i)=>a+v*b[i],0)); };
+  for(const k in groups){ if(groups[k].length>=40) fit(groups[k]); else small.push(...groups[k]); }
+  if(small.length>=40) fit(small);
 }
 
 // ===== 監視銘柄（Apps Script API 経由でスプレッドシートと同期） =====
@@ -389,11 +431,13 @@ function watchBox(code){
   h+='<div class="big num"><div><span>自動理論株価</span><b>'+(t?fm(t.value,0)+'円':'—')+'</b></div>'+
      (o?'<div><span>採用理論株価</span><b>'+fm(o.theo,0)+'円</b></div><div><span>現在株価</span><b>'+fm(o.px,0)+'円</b></div><div><span>判定</span><b><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span></b></div>':
        (t&&isNum(s._px)?'<div><span>紙面株価との差</span><b>'+pc(s._px/t.value-1)+'</b></div>':''))+'</div>';
-  if(t) h+='<details class="f"><summary>計算の内訳</summary><div class="num">'+
-    '<span>資産価値 '+fm(t.asset,0)+'円 ＝ 1株純資産 '+fm(t.bps,1)+' × 割引評価率 '+t.rate.toFixed(2)+'（自己資本比率 '+pc(t.eqr)+'）</span>'+
-    '<span>事業価値 '+fm(t.biz,0)+'円 ＝ '+t.epsSrc+' '+fm(t.eps,1)+' × '+t.roeSrc+' '+pc(t.roeC)+'（上限40%）× 150 × 財務レバレッジ補正 '+t.corr.toFixed(2)+'</span>'+
-    '<span>補正 ＝ 1 ÷ (1 ＋ (1/自己資本比率 − 1) × 0.33)。EPSが赤字なら事業価値は0。</span></div></details>';
-  else h+='<p class="small">1株純資産か自己資本比率が未判読のため自動計算できません。監視に追加して理論株価を手入力してください。</p>';
+  if(t) h+='<p class="small" style="margin:0">判定：<b>'+esc(t.verdict)+'</b>　業種内回帰の理論株価 <b class="num">'+(t.c2?fm(t.c2,0)+'円':'—')+'</b></p>'+
+    '<details class="f"><summary>計算の内訳</summary><div class="num">'+
+    '<span>残余利益：1株純資産 '+fm(t.bps,1)+'円 ＋ 10年分の超過利益（'+t.epsSrc+' '+fm(t.eps,1)+'円 → ROE '+pc(t.roe)+'、資本コスト '+pc(t.r,0)+'、配当性向 '+pc(t.payout,0)+'）</span>'+
+    '<span>資本コスト：時価総額 '+(isNum(t.mcap)?fm(t.mcap/1e8,0)+'億円':'不明')+'（2,500億円以上6%・300億円以上8%・それ未満10%）</span>'+
+    '<span>業種内回帰：'+esc(SEC&&SEC.c[s.code]!=null?SEC.names[SEC.c[s.code]]:'業種不明')+'の銘柄で、ROE・予想EPS伸び率'+(t.g!=null?'（'+pc(t.g)+'）':'')+'・ROEのぶれ・規模からPBRを推定</span>'+
+    '<span>過去3期の実績EPSと今期予想EPSがすべて黒字の銘柄だけを検証の対象にした。それ以外は参考値。</span></div></details>';
+  else h+='<p class="small">1株純資産かEPSが未判読のため自動計算できません。監視に追加して理論株価を手入力してください。</p>';
   h+=statusLine().replace('<div class="actions">','<div class="actions">');
   if(W.state==='nocfg'){} 
   else if(!o) h+='<div class="actions"><button class="btn" data-act="add" data-code="'+esc(code)+'"'+(W.busy||W.state==='loading'?' disabled':'')+'>監視に追加</button></div>';
@@ -445,6 +489,7 @@ app.addEventListener('click',async e=>{const b=e.target.closest('button[data-act
   if(a==='data-refresh'){ e.preventDefault(); await fetchData(); }
 });
 async function boot(){
+  try{ SEC=await (await fetch('sectors.json')).json(); }catch(e){ SEC=null; }
   const saved=await idbGet('data');
   if(saved&&saved.s){D=saved;prep();route();readWatch();return}
   if(cfg()){ app.innerHTML='<div class="loading">四季報データを取得しています…（初回は20〜40秒ほどかかります）</div>'; if(await fetchData()){route();readWatch();return} }
