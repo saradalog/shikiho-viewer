@@ -112,6 +112,8 @@ tr:last-child td{border-bottom:0}
 .tabs a[aria-current="page"]{color:var(--ink);border-color:var(--accent)}
 #wcount{margin-left:6px;font-size:11px;color:var(--surface);background:var(--accent);border-radius:999px;padding:0 6px}
 #wcount:empty{display:none}
+#hcount{margin-left:6px;font-size:11px;color:var(--surface);background:var(--accent);border-radius:999px;padding:0 6px}
+#hcount:empty{display:none}
 .pill{display:inline-block;font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;white-space:nowrap}
 .pill.buy{background:var(--buy-soft);color:var(--up)}
 .pill.sell{background:var(--sell-soft);color:var(--down)}
@@ -149,7 +151,7 @@ details.f div{font-size:12.5px;color:var(--muted);padding-top:6px;display:grid;g
 <body>
 <header class="top"><div class="wrap">
   <div class="brand"><h1>四季報ビューア</h1><span id="brand-sub">J-Quants最新</span></div>
-  <nav class="tabs" aria-label="画面切り替え"><a href="#" id="t-all">銘柄一覧</a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
+  <nav class="tabs" aria-label="画面切り替え"><a href="#" id="t-all">銘柄一覧</a><a href="#hold" id="t-hold">保有銘柄<span id="hcount" class="cnt"></span></a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
   <div class="searchrow">
     <input id="q" type="search" placeholder="銘柄コード・銘柄名で検索" autocomplete="off" aria-label="銘柄を検索">
     <select id="sort" aria-label="並べ替え">
@@ -390,17 +392,37 @@ async function act(label,action,body){
 function watched(code){return W.rows.find(o=>o.code===code)}
 function addWatch(code){const s=BY[code];const t=theo(s); act('監視に追加','add',{code,name:s.name,auto:t?t.value:null});}
 function saveWatch(code){
-  const ov=document.getElementById('w-ovr').value.trim(), mu=document.getElementById('w-mult').value.trim(), me=document.getElementById('w-memo').value;
+  const ov=document.getElementById('w-ovr').value.trim(), mu=document.getElementById('w-mult').value.trim(), hd=document.getElementById('w-hold').checked;
+  const body=document.getElementById('w-memo').value.trim(); const me=hd?('保有'+(body?' '+body:'')):body;
   const t=theo(BY[code]);
   act('保存','save',{code,ovr:ov===''?null:pn(ov),mult:mu===''?1.2:pn(mu),memo:me,auto:t?t.value:null});
+}
+async function addHold(code){
+  if(W.busy) return; const s=BY[code]; const t=theo(s); W.busy=true; W.msg={t:'保有に追加中…'}; paintWatch();
+  try{ await api('add',{code,name:s.name,auto:t?t.value:null}); applyRows(await api('save',{code,ovr:null,mult:1.2,memo:'保有',auto:t?t.value:null})); W.msg={t:'保有に追加しました。'}; W.state='ok'; W.err=null; W.busy=false; paintWatch(); }
+  catch(e){ W.busy=false; W.msg={t:'保有に追加できたか確認できませんでした。'+errText(e),err:true}; await readWatch(); }
 }
 function removeWatch(code){act('監視から外す処理','remove',{code});}
 function pn(v){ if(isNum(v)) return v; if(v==null) return null; const t=String(v).trim(); if(!t) return null;
   const neg=/^\(|^-|^△/.test(t); const n=parseFloat(t.replace(/[^0-9.]/g,'')); if(!isFinite(n)) return null; return neg?-n:n; }
 function judgeCls(j){return j==='買い検討'?'buy':j==='売り検討'?'sell':'hold'}
+// 保有銘柄はメモの先頭が「保有」の行。監視リスト（スプレッドシート）は同じ表のまま、画面だけ分ける
+const isHold=o=>/^保有/.test(String(o.memo||''));
+const memoBody=o=>String(o.memo||'').replace(/^保有\s*/,'');
+// 株価が監視シートで取れていないときは、四季報データ（J-Quantsの前営業日終値）で補って判定する
+function view(o){
+  const s=BY[o.code]; let px=o.px, pxSrc='';
+  if(!isNum(px)&&s&&isNum(s._px)){px=s._px;pxSrc='終値'}
+  const theo=o.theo, sell=isNum(o.sellLine)?o.sellLine:(isNum(theo)&&isNum(o.mult)?theo*o.mult:null);
+  const dev=isNum(px)&&isNum(theo)&&theo>0?px/theo-1:null;
+  const judge=!isNum(px)?'株価なし':!isNum(theo)?'理論株価なし':px<theo?'買い検討':isNum(sell)&&px>sell?'売り検討':'様子見';
+  return Object.assign({},o,{px,pxSrc,dev,judge,sellLine:sell});
+}
 function paintWatch(){
-  const c=document.getElementById('wcount'); if(c) c.textContent=W.rows.length?String(W.rows.length):'';
-  if(location.hash==='#watch') renderWatch(); else { const m=location.hash.match(/^#s-([0-9A-Za-z]+)$/); const box=document.getElementById('wbox'); if(m&&box) box.innerHTML=watchBox(m[1].toUpperCase()); }
+  const nh=W.rows.filter(isHold).length, nw=W.rows.length-nh;
+  const c=document.getElementById('wcount'); if(c) c.textContent=nw?String(nw):'';
+  const hc=document.getElementById('hcount'); if(hc) hc.textContent=nh?String(nh):'';
+  if(location.hash==='#watch') renderWatch('watch'); else if(location.hash==='#hold') renderWatch('hold'); else { const m=location.hash.match(/^#s-([0-9A-Za-z]+)$/); const box=document.getElementById('wbox'); if(m&&box) box.innerHTML=watchBox(m[1].toUpperCase()); }
 }
 function statusLine(){
   let h='';
@@ -409,25 +431,25 @@ function statusLine(){
   if(W.state==='error'){ h+='<div class="msg err">'+esc(errText(W.err))+'</div>'; if(['unauthorized','network','bad_response'].includes(W.err&&W.err.code)) h+='<div class="actions"><a class="btn ghost" href="#settings">設定を開く</a></div>'; }
   return h;
 }
-function renderWatch(){
-  setTab('watch');
-  const rows=W.rows.slice().sort((a,b)=>(isNum(a.dev)?a.dev:9)-(isNum(b.dev)?b.dev:9));
+function renderWatch(kind){
+  kind=kind||'watch'; setTab(kind);
+  const rows=W.rows.filter(o=>kind==='hold'?isHold(o):!isHold(o)).map(view).sort((a,b)=>(isNum(a.dev)?a.dev:9)-(isNum(b.dev)?b.dev:9));
   const nb=rows.filter(o=>o.judge==='買い検討').length, ns=rows.filter(o=>o.judge==='売り検討').length;
   let h='<div class="wsum"><span class="pill buy">買い検討 '+nb+'</span><span class="pill sell">売り検討 '+ns+'</span><span class="grow small">'+(W.state==='loading'||W.state==='refreshing'?'読み込み中…':W.at?new Date(W.at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+' 時点':'')+'</span><button class="btn ghost" data-act="reload"'+(W.busy?' disabled':'')+'>再読み込み</button></div>';
   h+=statusLine();
-  if(!rows.length&&W.state!=='loading') h+='<div class="empty">監視銘柄はまだありません。銘柄一覧から銘柄を開き「監視に追加」を押してください。</div>';
+  if(!rows.length&&W.state!=='loading') h+='<div class="empty">'+(kind==='hold'?'保有銘柄はまだありません。銘柄を開き「保有に追加」を押すか、監視銘柄で「保有中」にチェックして保存してください。':'監視銘柄はまだありません。銘柄一覧から銘柄を開き「監視に追加」を押してください。')+'</div>';
   h+='<div style="border-top:1px solid var(--rule)">'+rows.map(o=>{
     const pos=(isNum(o.px)&&isNum(o.theo)&&o.theo>0)?Math.max(0,Math.min(100,o.px/o.theo/ (2) *100)):null;
     const sl=(isNum(o.mult))?Math.min(100,o.mult/2*100):60;
     return '<a class="wrow" href="#s-'+esc(o.code)+'"><span class="code">'+esc(o.code)+'</span><span class="nm">'+esc(o.name)+'</span><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span>'+
-    '<span class="sub num"><span>株価 <b>'+fm(o.px,0)+'</b></span><span>理論 <b>'+fm(o.theo,0)+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,0)+'</b></span></span>'+
+    '<span class="sub num"><span>株価 <b>'+fm(o.px,0)+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,0)+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,0)+'</b></span></span>'+
     (pos!=null?'<span class="bar" aria-hidden="true"><b style="left:0;width:50%;background:var(--buy-soft)"></b><b style="left:'+sl+'%;right:0;background:var(--sell-soft)"></b><i style="left:'+pos+'%"></i></span>':'')+
-    (o.memo?'<span class="sub">'+esc(o.memo)+'</span>':'')+'</a>'}).join('')+'</div>';
-  h+='<p class="small">株価は株探から取得（取れないときは毎日の自動記録の終値）。帯の左半分が理論株価未満（買い検討）、右の色付き部分が売り検討ライン超え。<a href="'+SHEET_URL+'">スプレッドシートを開く</a></p>';
+    (memoBody(o)?'<span class="sub">'+esc(memoBody(o))+'</span>':'')+'</a>'}).join('')+'</div>';
+  h+='<p class="small">株価は株探から取得。取れないときは「（終値）」としてJ-Quantsの前営業日終値で判定。帯の左半分が理論株価未満（買い検討）、右の色付き部分が売り検討ライン超え。<a href="'+SHEET_URL+'">スプレッドシートを開く</a></p>';
   app.innerHTML=h;
 }
 function watchBox(code){
-  const s=BY[code]; const t=theo(s); const o=watched(code);
+  const s=BY[code]; const t=theo(s); const o0=watched(code); const o=o0?view(o0):null;
   let h='<div class="theo">';
   h+='<div class="big num"><div><span>自動理論株価</span><b>'+(t?fm(t.value,0)+'円':'—')+'</b></div>'+
      (o?'<div><span>採用理論株価</span><b>'+fm(o.theo,0)+'円</b></div><div><span>現在株価</span><b>'+fm(o.px,0)+'円</b></div><div><span>判定</span><b><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span></b></div>':
@@ -441,17 +463,17 @@ function watchBox(code){
   else h+='<p class="small">1株純資産かEPSが未判読のため自動計算できません。監視に追加して理論株価を手入力してください。</p>';
   h+=statusLine().replace('<div class="actions">','<div class="actions">');
   if(W.state==='nocfg'){} 
-  else if(!o) h+='<div class="actions"><button class="btn" data-act="add" data-code="'+esc(code)+'"'+(W.busy||W.state==='loading'?' disabled':'')+'>監視に追加</button></div>';
+  else if(!o) h+='<div class="actions"><button class="btn" data-act="add" data-code="'+esc(code)+'"'+(W.busy||W.state==='loading'?' disabled':'')+'>監視に追加</button><button class="btn ghost" data-act="addhold" data-code="'+esc(code)+'"'+(W.busy||W.state==='loading'?' disabled':'')+'>保有に追加</button></div>';
   else h+='<div class="form"><label for="w-ovr">理論株価の上書き（円、空欄なら自動）<input id="w-ovr" inputmode="decimal" value="'+(isNum(o.ovr)?o.ovr:'')+'" placeholder="'+(t?t.value:'')+'"></label>'+
     '<label for="w-mult">売り倍率（理論株価の何倍で売り検討）<input id="w-mult" inputmode="decimal" value="'+(isNum(o.mult)?o.mult:1.2)+'"></label>'+
-    '<label class="wide" for="w-memo">メモ（投資ストーリーなど）<input id="w-memo" value="'+esc(o.memo)+'"></label></div>'+
+    '<label class="wide" for="w-memo">メモ（投資ストーリーなど）<input id="w-memo" value="'+esc(memoBody(o))+'"></label><label class="wide" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="w-hold" style="width:auto"'+(isHold(o)?' checked':'')+'>保有中（「保有銘柄」タブに表示）</label></div>'+
     '<div class="actions"><button class="btn" data-act="save" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>保存</button><button class="btn danger" data-act="remove" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>監視から外す</button></div>';
   h+='</div>';
   return h;
 }
-function setTab(t){for(const k of ['all','watch','settings']){const el=document.getElementById('t-'+k); if(el) el.setAttribute('aria-current',t===k?'page':'false')}}
+function setTab(t){for(const k of ['all','hold','watch','settings']){const el=document.getElementById('t-'+k); if(el) el.setAttribute('aria-current',t===k?'page':'false')}}
 app.addEventListener('click',async e=>{const b=e.target.closest('button[data-act]'); if(!b) return; e.preventDefault(); const a=b.dataset.act, c=b.dataset.code;
-  if(a==='reload'){W.msg=null;readWatch()} else if(a==='add') addWatch(c); else if(a==='save') saveWatch(c);
+  if(a==='reload'){W.msg=null;readWatch()} else if(a==='add') addWatch(c); else if(a==='addhold') addHold(c); else if(a==='save') saveWatch(c);
   else if(a==='remove'){ if(b.dataset.confirm){removeWatch(c)} else {b.dataset.confirm='1';b.textContent='本当に外す（もう一度押す）'} } });
 
 // ===== 端末内のデータ保存（IndexedDB） =====
@@ -512,7 +534,7 @@ async function boot(){
   if(cfg()){ app.innerHTML='<div class="loading">四季報データを取得しています…（初回は20〜40秒ほどかかります）</div>'; if(await fetchData()){route();readWatch();return} }
   if(location.hash!=='#settings') location.hash='settings'; else renderSettings();
 }
-function route(){ if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#watch'){renderWatch();return} setTab('all'); const m=location.hash.match(/^#s-([0-9A-Za-z]+)$/); if(m) renderDetail(m[1].toUpperCase()); else renderList(); }
+function route(){ if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#watch'){renderWatch('watch');return} if(location.hash==='#hold'){renderWatch('hold');return} setTab('all'); const m=location.hash.match(/^#s-([0-9A-Za-z]+)$/); if(m) renderDetail(m[1].toUpperCase()); else renderList(); }
 let t; qEl.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{shown=100;if(location.hash)location.hash='';renderList()},120)});
 qEl.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=qEl.value.trim().toUpperCase().normalize('NFKC');if(BY[v]){location.hash='s-'+v}}});
 sortEl.addEventListener('change',()=>{shown=100;if(location.hash)location.hash='';renderList()});
