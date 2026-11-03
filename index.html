@@ -478,7 +478,7 @@ function watchBox(code){
   else if(!o) h+='<div class="actions"><button class="btn" data-act="add" data-code="'+esc(code)+'"'+(W.busy||W.state==='loading'?' disabled':'')+'>監視に追加</button><button class="btn ghost" data-act="addhold" data-code="'+esc(code)+'"'+(W.busy||W.state==='loading'?' disabled':'')+'>保有に追加</button></div>';
   else h+='<div class="form"><label for="w-ovr">理論株価の上書き（円、空欄なら自動）<input id="w-ovr" inputmode="decimal" value="'+(isNum(o.ovr)?o.ovr:'')+'" placeholder="'+(t?t.value:'')+'"></label>'+
     '<label for="w-mult">売り倍率（理論株価の何倍で売り検討）<input id="w-mult" inputmode="decimal" value="'+(isNum(o.mult)?o.mult:1.2)+'"></label>'+
-    '<label class="wide" for="w-memo">メモ（投資ストーリーなど）<input id="w-memo" value="'+esc(memoBody(o))+'"></label><label class="wide" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="w-hold" style="width:auto"'+(isHold(o)?' checked':'')+'>保有中（「保有銘柄」タブに表示）</label></div>'+
+    '<label class="wide" for="w-memo">メモ（投資ストーリーなど）<input id="w-memo" value="'+esc(memoBody(o))+'"></label><label class="wide" style="display:flex;flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="w-hold" style="width:22px;height:22px;flex:none;margin:0"'+(isHold(o)?' checked':'')+'>保有中（「保有銘柄」タブに表示）</label></div>'+
     '<div class="actions"><button class="btn" data-act="save" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>保存</button><button class="btn danger" data-act="remove" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>監視から外す</button></div>';
   h+='</div>';
   return h;
