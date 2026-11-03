@@ -148,7 +148,7 @@ details.f div{font-size:12.5px;color:var(--muted);padding-top:6px;display:grid;g
 </head>
 <body>
 <header class="top"><div class="wrap">
-  <div class="brand"><h1>四季報ビューア</h1><span>2026年4集・2580銘柄</span></div>
+  <div class="brand"><h1>四季報ビューア</h1><span id="brand-sub">J-Quants最新</span></div>
   <nav class="tabs" aria-label="画面切り替え"><a href="#" id="t-all">銘柄一覧</a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
   <div class="searchrow">
     <input id="q" type="search" placeholder="銘柄コード・銘柄名で検索" autocomplete="off" aria-label="銘柄を検索">
@@ -194,6 +194,7 @@ function prep(){
     s._has=isNum(s._px);
   }
   fitC2();
+  const b=document.getElementById('brand-sub'); if(b) b.textContent='J-Quants最新・'+D.s.length.toLocaleString()+'銘柄';
 }
 
 function filtered(){
@@ -488,10 +489,26 @@ app.addEventListener('click',async e=>{const b=e.target.closest('button[data-act
     catch(err){ S.busy=false; S.msg={t:errText(err),err:true}; renderSettings(); } }
   if(a==='data-refresh'){ e.preventDefault(); await fetchData(); }
 });
+// シートは平日20:37にJ-Quantsで更新される。手元のデータがその後の取り込みでなければ、裏で取り込み直す
+function lastUpdate(){
+  const jst=new Date(Date.now()+9*3600e3); let d=new Date(Date.UTC(jst.getUTCFullYear(),jst.getUTCMonth(),jst.getUTCDate(),21-9));
+  if(Date.now()<d.getTime()) d=new Date(d.getTime()-864e5);
+  while([0,6].includes(new Date(d.getTime()+9*3600e3).getUTCDay())) d=new Date(d.getTime()-864e5);
+  return d.getTime();
+}
+let refreshing=false;
+async function autoRefresh(){
+  if(refreshing||!cfg()||!D||Date.parse(D.fetchedAt||0)>=lastUpdate()) return;
+  refreshing=true; const b=document.getElementById('brand-sub'); if(b) b.textContent='最新データを取り込み中…';
+  const ok=await fetchData(); refreshing=false;
+  if(ok){ const typing=document.activeElement&&document.activeElement.tagName==='INPUT'; if(!typing) route(); }
+  else if(b) b.textContent='J-Quants最新・'+D.s.length.toLocaleString()+'銘柄（更新できず）';
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') autoRefresh(); });
 async function boot(){
   try{ SEC=await (await fetch('sectors.json')).json(); }catch(e){ SEC=null; }
   const saved=await idbGet('data');
-  if(saved&&saved.s){D=saved;prep();route();readWatch();return}
+  if(saved&&saved.s){D=saved;prep();route();readWatch();autoRefresh();return}
   if(cfg()){ app.innerHTML='<div class="loading">四季報データを取得しています…（初回は20〜40秒ほどかかります）</div>'; if(await fetchData()){route();readWatch();return} }
   if(location.hash!=='#settings') location.hash='settings'; else renderSettings();
 }
