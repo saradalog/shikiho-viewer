@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#27407a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="四季報">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<title>四季報ビューア</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Shippori+Mincho:wght@600;800&display=swap" rel="stylesheet">
+<style>
+/* 紙面の版面を思わせる罫線主体のレイアウト。実績＝藍、予想＝紫で全画面統一 */
+:root{
+  --paper:#f6f6f2; --surface:#ffffff; --ink:#1d2230; --muted:#666c7a; --rule:#d9dadf;
+  --accent:#27407a; --fc:#7a4fb0; --fc-soft:#e6dcf3; --act-soft:#d8e0f0;
+  --up:#1e7a4a; --down:#b23a3a; --buy-soft:#dcefe3; --sell-soft:#f6dede;
+  --display:"Shippori Mincho","Hiragino Mincho ProN","Yu Mincho",serif;
+  --body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#14161c; --surface:#1c1f27; --ink:#e7e8ec; --muted:#9a9fac; --rule:#30343f;
+  --accent:#8fa8e6; --fc:#b994e6; --fc-soft:#3a2f4d; --act-soft:#2a3550; --up:#5cc58d; --down:#f08080; --buy-soft:#1f3a2b; --sell-soft:#43262a; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --paper:#14161c; --surface:#1c1f27; --ink:#e7e8ec; --muted:#9a9fac; --rule:#30343f;
+  --accent:#8fa8e6; --fc:#b994e6; --fc-soft:#3a2f4d; --act-soft:#2a3550; --up:#5cc58d; --down:#f08080; --buy-soft:#1f3a2b; --sell-soft:#43262a; color-scheme:dark;}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.6;-webkit-text-size-adjust:100%}
+.num,table{font-variant-numeric:tabular-nums}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:860px;margin:0 auto;padding:0 max(16px,env(safe-area-inset-right)) calc(48px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+header.top{padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);position:sticky;top:0;z-index:5;background:var(--paper);border-bottom:1px solid var(--rule)}
+header.top .wrap{padding-top:12px;padding-bottom:10px;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.searchrow{min-width:0}
+.brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.brand h1{font-family:var(--display);font-weight:800;font-size:20px;margin:0;text-wrap:balance}
+.brand span{color:var(--muted);font-size:12px}
+.searchrow{display:flex;gap:8px}
+#q{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
+#sort{flex:0 0 auto;width:9.5em;min-width:0;padding:8px;border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--rule);background:var(--surface);border-radius:999px;padding:3px 10px;font-size:13px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.meta{color:var(--muted);font-size:12px;margin:10px 0 6px}
+.recent{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 0}
+.recent a{font-size:13px;color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)}
+ul.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule)}
+ul.list li a{display:grid;grid-template-columns:52px 1fr auto;gap:2px 10px;padding:10px 4px;border-bottom:1px solid var(--rule);text-decoration:none;color:inherit}
+ul.list li a:hover{background:var(--surface)}
+.code{font-weight:700;color:var(--accent)}
+.nm{font-weight:700;overflow-wrap:anywhere}
+.px{text-align:right;font-weight:700}
+.sub{grid-column:2 / 4;display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12.5px}
+.sub b{color:var(--ink);font-weight:400}
+.more{display:block;width:100%;margin:14px 0;padding:10px;border:1px solid var(--rule);border-radius:8px;background:var(--surface);cursor:pointer}
+.back{display:inline-block;margin:12px 0 4px;color:var(--accent);text-decoration:none;font-size:14px}
+.dh{display:grid;gap:4px;padding:6px 0 12px;border-bottom:2px solid var(--ink)}
+.dh .c{color:var(--accent);font-weight:700}
+.dh h2{font-family:var(--display);font-weight:800;font-size:26px;line-height:1.25;margin:0;text-wrap:balance}
+.dh .p{font-size:14px;color:var(--muted)}
+.dh .p b{font-size:20px;color:var(--ink)}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid var(--rule)}
+.tile{padding:10px 8px;border-right:1px solid var(--rule)}
+.tile:last-child{border-right:0}
+.tile .k{font-size:11.5px;color:var(--muted)}
+.tile .v{font-size:18px;font-weight:700}
+@media (max-width:480px){.tiles{grid-template-columns:repeat(2,1fr)}.tile:nth-child(2){border-right:0}.tile:nth-child(-n+2){border-bottom:1px solid var(--rule)}}
+section{margin-top:22px}
+section h3{font-family:var(--display);font-size:17px;margin:0 0 8px;padding-left:8px;border-left:4px solid var(--accent)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-bottom:4px}
+.legend i{display:inline-block;width:10px;height:10px;margin-right:4px;vertical-align:-1px;border-radius:2px}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:560px){.charts{gap:8px}.chart{padding:6px 4px 2px}}
+.chart{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:8px 8px 4px}
+.chart .t{font-size:12.5px;font-weight:700;margin-bottom:2px}
+.chart svg{display:block;width:100%;height:auto}
+.scroll{overflow-x:auto;border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--surface)}
+thead th{font-weight:700;color:var(--muted);font-size:12px}
+tr.fc td{color:var(--fc)}
+tr:last-child td{border-bottom:0}
+.tag{display:inline-block;font-size:11px;padding:0 6px;border-radius:4px;margin-left:4px;vertical-align:1px}
+.tag.a{background:var(--act-soft);color:var(--accent)}
+.tag.f{background:var(--fc-soft);color:var(--fc)}
+.neg{color:var(--down)}
+.kv{display:grid;grid-template-columns:repeat(2,1fr);gap:0;background:var(--surface);border:1px solid var(--rule);border-radius:8px}
+.kv div{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border-bottom:1px solid var(--rule);font-size:13.5px}
+.kv div:nth-child(odd){border-right:1px solid var(--rule)}
+.kv span{color:var(--muted)}
+@media (max-width:480px){.kv{grid-template-columns:1fr}.kv div:nth-child(odd){border-right:0}}
+.small{font-size:12px;color:var(--muted)}
+.cm{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;display:grid;gap:10px;max-width:65em}
+.cm p{margin:0}
+.cm .h{font-weight:700}
+.cm .h::before{content:"【";color:var(--muted)}.cm .h::after{content:"】";color:var(--muted)}
+.note{border-left:3px solid var(--fc);padding:4px 10px;font-size:13px;color:var(--muted);background:var(--surface)}
+.empty{padding:28px 0;color:var(--muted)}
+.loading{padding:40px 0;color:var(--muted)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--rule)}
+.tabs a{padding:6px 12px;text-decoration:none;color:var(--muted);font-weight:700;font-size:14px;border-bottom:3px solid transparent;margin-bottom:-1px}
+.tabs a[aria-current="page"]{color:var(--ink);border-color:var(--accent)}
+#wcount{margin-left:6px;font-size:11px;color:var(--surface);background:var(--accent);border-radius:999px;padding:0 6px}
+#wcount:empty{display:none}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.pill.buy{background:var(--buy-soft);color:var(--up)}
+.pill.sell{background:var(--sell-soft);color:var(--down)}
+.pill.hold{background:var(--rule);color:var(--muted)}
+.wsum{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0 8px}
+.wsum .grow{flex:1}
+.btn{border:1px solid var(--accent);background:var(--accent);color:var(--surface);border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:700}
+a.btn{text-decoration:none;display:inline-block}
+.btn.ghost{background:var(--surface);color:var(--accent)}
+.btn.danger{background:var(--surface);color:var(--down);border-color:var(--down)}
+.btn:disabled{opacity:.5;cursor:default}
+.wrow{display:grid;grid-template-columns:52px 1fr auto;gap:2px 10px;padding:10px 4px;border-bottom:1px solid var(--rule);text-decoration:none;color:inherit}
+.wrow .sub{grid-column:2 / 4}
+.bar{position:relative;height:6px;background:var(--rule);border-radius:3px;margin-top:4px;grid-column:2 / 4}
+.bar i{position:absolute;top:-3px;width:2px;height:12px;background:var(--ink)}
+.bar b{position:absolute;top:0;height:6px;border-radius:3px}
+.theo{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;display:grid;gap:10px}
+.theo .big{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline}
+.theo .big div{display:grid}
+.theo .big span{font-size:11.5px;color:var(--muted)}
+.theo .big b{font-size:22px}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px}
+.form label{display:grid;gap:3px;font-size:12px;color:var(--muted);min-width:0}
+.form input{min-width:0;width:100%}
+.form input{padding:8px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--paper);font-size:15px;color:var(--ink)}
+.form .wide{grid-column:1 / -1}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.msg{font-size:13px;padding:8px 10px;border-radius:8px;background:var(--fc-soft)}
+.msg.err{background:var(--sell-soft);color:var(--down)}
+details.f summary{cursor:pointer;color:var(--accent);font-size:13px}
+details.f div{font-size:12.5px;color:var(--muted);padding-top:6px;display:grid;gap:3px}
+@media (prefers-reduced-motion:no-preference){ul.list li a{transition:background .15s}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <div class="brand"><h1>四季報ビューア</h1><span>2026年4集・2580銘柄</span></div>
+  <nav class="tabs" aria-label="画面切り替え"><a href="#" id="t-all">銘柄一覧</a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
+  <div class="searchrow">
+    <input id="q" type="search" placeholder="銘柄コード・銘柄名で検索" autocomplete="off" aria-label="銘柄を検索">
+    <select id="sort" aria-label="並べ替え">
+      <option value="code">コード順</option>
+      <option value="per">今期PER 低い順</option>
+      <option value="pbr">PBR 低い順</option>
+      <option value="yld">配当利回り 高い順</option>
+      <option value="opg">予想営業増益率 高い順</option>
+      <option value="opm">予想営業利益率 高い順</option>
+    </select>
+  </div>
+  <div class="chips" role="group" aria-label="絞り込み">
+    <button class="chip" id="f-up" aria-pressed="false">予想 増収増益</button>
+    <button class="chip" id="f-yld" aria-pressed="false">利回り3%以上</button>
+    <button class="chip" id="f-num" aria-pressed="false">数値ありのみ</button>
+  </div>
+</div></header>
+<main class="wrap" id="app"><div class="loading">データを読み込んでいます…</div></main>
+<script>
+(function(){
+const app=document.getElementById('app'), qEl=document.getElementById('q'), sortEl=document.getElementById('sort');
+let D=null, H=null, IDX={}, BY={}, shown=100;
+const flt={up:false,yld:false,num:false};
+const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+function isNum(x){return typeof x==='number'&&isFinite(x)}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function fm(x,dec=0){ if(!isNum(x)) return x==null?'—':esc(x);
+  const s=Math.abs(x).toLocaleString('ja-JP',{minimumFractionDigits:dec,maximumFractionDigits:dec});
+  return x<0?'<span class="neg">△'+s+'</span>':s; }
+function pc(x,dec=1){ if(!isNum(x)) return x==null?'—':esc(x);
+  const s=Math.abs(x*100).toFixed(dec)+'%'; return x<0?'<span class="neg">△'+s+'</span>':s; }
+function col(k,name){return IDX[k][name]}
+
+function prep(){
+  H=D.h; for(const k in H){IDX[k]={};H[k].forEach((n,i)=>IDX[k][n]=i)}
+  for(const s of D.s){ BY[s.code]=s;
+    const L=s.l||[]; const g=n=>L[col('list',n)];
+    s._per=g('今期予想PER（倍）'); s._pbr=g('PBR（倍）'); s._yld=g('配当利回り上限'); s._opg=g('予想営業増益率対直近実績');
+    s._rvg=g('予想増収率対直近実績'); s._opm=g('今期予想営業利益率'); s._px=g('株価（円）');
+    s._key=(s.code+' '+(s.name||'')).toLowerCase().normalize('NFKC');
+    s._has=isNum(s._px);
+  }
+}
+
+function filtered(){
+  const q=qEl.value.trim().toLowerCase().normalize('NFKC');
+  let a=D.s.filter(s=>(!q||s._key.includes(q))&&(!flt.num||s._has)&&(!flt.yld||(isNum(s._yld)&&s._yld>=0.03))&&(!flt.up||(isNum(s._opg)&&s._opg>0&&isNum(s._rvg)&&s._rvg>0)));
+  const k=sortEl.value, asc=(f)=>(x,y)=>{const a=x[f],b=y[f];const na=!isNum(a)||(f==='_per'&&a<=0),nb=!isNum(b)||(f==='_per'&&b<=0);if(na&&nb)return 0;if(na)return 1;if(nb)return -1;return a-b};
+  const desc=(f)=>(x,y)=>{const a=x[f],b=y[f];if(!isNum(a)&&!isNum(b))return 0;if(!isNum(a))return 1;if(!isNum(b))return -1;return b-a};
+  if(k==='per')a.sort(asc('_per')); else if(k==='pbr')a.sort(asc('_pbr')); else if(k==='yld')a.sort(desc('_yld')); else if(k==='opg')a.sort(desc('_opg')); else if(k==='opm')a.sort(desc('_opm'));
+  return a;
+}
+
+function renderList(){
+  const a=filtered(); const rec=store.get('shk-recent',[]).filter(c=>BY[c]);
+  let h='';
+  if(rec.length && !qEl.value) h+='<div class="recent"><span class="small">最近見た銘柄：</span>'+rec.map(c=>'<a href="#s-'+esc(c)+'">'+esc(c)+' '+esc(BY[c].name)+'</a>').join('')+'</div>';
+  h+='<div class="meta">'+a.length.toLocaleString()+'銘柄'+(a.length>shown?'（先頭'+shown+'件を表示）':'')+'　株価・指標は紙面掲載時点</div>';
+  if(!a.length){app.innerHTML=h+'<div class="empty">該当する銘柄がありません。検索語や絞り込みを変えてください。</div>';return}
+  h+='<ul class="list">'+a.slice(0,shown).map(s=>'<li><a href="#s-'+esc(s.code)+'"><span class="code">'+esc(s.code)+'</span><span class="nm">'+esc(s.name)+'</span><span class="px num">'+(s._has?fm(s._px,0)+'円':'<span class="small">数値未判読</span>')+'</span>'+
+    (s._has?'<span class="sub num"><span>PER <b>'+(isNum(s._per)?s._per.toFixed(1):'—')+'</b></span><span>PBR <b>'+(isNum(s._pbr)?s._pbr.toFixed(2):'—')+'</b></span><span>利回り <b>'+pc(s._yld)+'</b></span><span>営業増益 <b>'+pc(s._opg)+'</b></span></span>':'')+'</a></li>').join('')+'</ul>';
+  if(a.length>shown) h+='<button class="more" id="more">さらに100件を表示</button>';
+  app.innerHTML=h; const m=document.getElementById('more'); if(m) m.onclick=()=>{shown+=100;renderList()};
+}
+
+function barChart(title,rows,vi){
+  const pts=rows.map(r=>({l:String(r[col('years','決算期')]||'').replace(/^20/,''),v:r[vi],f:/予想/.test(r[col('years','区分')]||'')})).filter(p=>p.l);
+  const vals=pts.map(p=>p.v).filter(isNum); if(!vals.length) return '';
+  const W=320,Hh=150,pl=4,pr=4,pt=16,pb=22; const mx=Math.max(0,...vals), mn=Math.min(0,...vals); const rng=(mx-mn)||1;
+  const y=v=>pt+(mx-v)/rng*(Hh-pt-pb); const bw=(W-pl-pr)/pts.length;
+  let s='<svg viewBox="0 0 '+W+' '+Hh+'" role="img" aria-label="'+esc(title)+'の推移">';
+  s+='<line x1="0" x2="'+W+'" y1="'+y(0)+'" y2="'+y(0)+'" stroke="var(--rule)"/>';
+  pts.forEach((p,i)=>{const x=pl+i*bw+bw*0.18,w=bw*0.64; const fill=p.f?'var(--fc)':'var(--accent)';
+    if(isNum(p.v)){const y0=y(Math.max(0,p.v)),h=Math.max(1,Math.abs(y(p.v)-y(0)));
+      s+='<rect x="'+x+'" y="'+y0+'" width="'+w+'" height="'+h+'" rx="2" fill="'+fill+'" opacity="'+(p.f?0.55:0.9)+'"/>';
+    }
+    s+='<text x="'+(x+w/2)+'" y="'+(Hh-6)+'" text-anchor="middle" font-size="9.5" fill="'+(p.f?'var(--fc)':'var(--muted)')+'">'+esc(p.l)+'</text>';
+  });
+  s+='<text x="'+pl+'" y="11" font-size="10" fill="var(--muted)">最大 '+Math.round(mx).toLocaleString()+(mn<0?'　最小 △'+Math.round(-mn).toLocaleString():'')+'</text>';
+  s+='</svg>';
+  return '<div class="chart"><div class="t">'+esc(title)+'<span class="small">（百万円）</span></div>'+s+'</div>';
+}
+
+function renderDetail(code){
+  const s=BY[code]; if(!s){app.innerHTML='<a class="back" href="#">← 一覧へ</a><div class="empty">銘柄コード「'+esc(code)+'」は収録されていません。</div>';return}
+  let rec=store.get('shk-recent',[]).filter(c=>c!==code); rec.unshift(code); store.set('shk-recent',rec.slice(0,8));
+  const L=s.l||[]; const g=n=>L[col('list',n)];
+  const yr=(s.y||[]).slice().sort((a,b)=>0);
+  const F=(s.f||[])[0]||[]; const gf=n=>F[col('fin',n)];
+  const C=(s.c||[])[0]||[]; const gc=n=>C[col('cmt',n)];
+  const dv=(lo,hi)=>!isNum(lo)?'—':(lo===hi||!isNum(hi)?fm(lo,1):fm(lo,1)+'〜'+fm(hi,1));
+  let h='<a class="back" href="#">← 一覧へ</a>';
+  h+='<div class="dh"><div class="c">'+esc(s.code)+'</div><h2>'+esc(s.name)+'</h2><div class="p num">'+(isNum(s._px)?'<b>'+fm(s._px,0)+'</b> 円　'+esc(g('株価基準日')||'')+' 時点':'株価は未判読')+'　'+esc((s.y&&s.y[0]&&s.y[0][0])||'')+'</div></div>';
+  h+='<div class="tiles num">'+
+    '<div class="tile"><div class="k">今期予想PER</div><div class="v">'+(isNum(s._per)?s._per.toFixed(1)+'倍':'—')+'</div></div>'+
+    '<div class="tile"><div class="k">PBR</div><div class="v">'+(isNum(s._pbr)?s._pbr.toFixed(2)+'倍':'—')+'</div></div>'+
+    '<div class="tile"><div class="k">予想配当利回り</div><div class="v">'+(isNum(g('配当利回り下限'))&&g('配当利回り下限')!==g('配当利回り上限')?pc(g('配当利回り下限'))+'〜':'')+pc(g('配当利回り上限'))+'</div></div>'+
+    '<div class="tile"><div class="k">今期予想営業利益率</div><div class="v">'+pc(s._opm)+'</div></div></div>';
+  h+='<section><h3>理論株価と監視</h3><div id="wbox">'+watchBox(code)+'</div></section>';
+  const comment = gc('特色（原文）')||gc('コメント1（原文）');
+  if(comment){
+    h+='<section><h3>特色・コメント</h3><div class="cm">';
+    if(gc('特色（原文）')) h+='<p><span class="small">特色</span><br>'+esc(gc('特色（原文）'))+'</p>';
+    if(gc('コメント1（原文）')) h+='<p><span class="h">'+esc(gc('見出し1')||'')+'</span>'+esc(gc('コメント1（原文）'))+'</p>';
+    if(gc('コメント2（原文）')) h+='<p><span class="h">'+esc(gc('見出し2')||'')+'</span>'+esc(gc('コメント2（原文）'))+'</p>';
+    h+='</div></section>';
+  }
+  if(yr.length){
+    h+='<section><h3>業績推移</h3><div class="legend"><span><i style="background:var(--accent)"></i>実績</span><span><i style="background:var(--fc);opacity:.55"></i>四季報予想</span></div><div class="charts">'+
+      barChart('売上高',yr,col('years','売上高（百万円）'))+barChart('営業利益',yr,col('years','営業利益（百万円）'))+barChart('純利益',yr,col('years','純利益（百万円）'))+
+      barChart('経常・税前利益',yr,col('years','経常・税前利益（百万円）'))+'</div>';
+    const Y=n=>col('years',n);
+    h+='<div class="scroll" style="margin-top:12px"><table><thead><tr><th>決算期</th><th>売上高</th><th>営業利益</th><th>経常・税前</th><th>純利益</th><th>EPS</th><th>配当</th><th>営業利益率</th><th>増収率</th><th>営業増益率</th></tr></thead><tbody>'+
+      yr.map(r=>{const f=/予想/.test(r[Y('区分')]||'');return '<tr class="'+(f?'fc':'')+'"><td>'+esc(r[Y('決算期')]||'—')+'<span class="tag '+(f?'f':'a')+'">'+esc((r[Y('区分')]||'').replace('今期予想','今期予').replace('来期予想','来期予'))+'</span></td><td>'+fm(r[Y('売上高（百万円）')])+'</td><td>'+fm(r[Y('営業利益（百万円）')])+'</td><td>'+fm(r[Y('経常・税前利益（百万円）')])+'</td><td>'+fm(r[Y('純利益（百万円）')])+'</td><td>'+fm(r[Y('EPS（円）')],1)+'</td><td>'+(r[Y('配当の原表表記')]!=null?esc(r[Y('配当の原表表記')]):'—')+'</td><td>'+pc(r[Y('営業利益率')])+'</td><td>'+pc(r[Y('増収率（対前期）')])+'</td><td>'+pc(r[Y('営業増益率（対前期）')])+'</td></tr>'}).join('')+'</tbody></table></div>';
+    const fy=yr[0]; h+='<p class="small">金額は百万円、EPS・配当は円。会計範囲：'+esc([...new Set(yr.map(r=>r[Y('会計範囲')]).filter(Boolean))].join('・')||'—')+'　利益欄：'+esc(fy[Y('利益欄の種類')]||'—')+'</p>';
+    const notes=[...new Set(yr.map(r=>r[Y('比較・原表の注記')]).filter(Boolean))]; if(notes.length) h+='<div class="note">'+notes.map(esc).join('<br>')+'</div>';
+    h+='</section>';
+  }
+  if(F.length){
+    const kv=(k,v)=>'<div><span>'+k+'</span><b class="num">'+v+'</b></div>';
+    h+='<section><h3>財務 <span class="small">（'+esc(gf('財務欄の時点（原表）')||'—')+'）</span></h3><div class="kv">'+
+      kv('総資産',fm(gf('総資産')))+kv('自己資本',fm(gf('自己資本')))+kv('自己資本比率',pc(gf('自己資本比率')))+kv('有利子負債',fm(gf('有利子負債')))+
+      kv('有利子負債／自己資本',pc(gf('有利子負債／自己資本')))+kv('利益剰余金',fm(gf('利益剰余金')))+kv('資本金',fm(gf('資本金')))+kv('1株純資産',fm(gf('1株純資産（円）'),1)+'円')+'</div></section>';
+    h+='<section><h3>指標等 <span class="small">（'+esc(gf('指標等の時点（原表）')||'—')+'）</span></h3><div class="kv">'+
+      kv('ROE 実績 / 予想',pc(gf('ROE 実績'))+' / '+pc(gf('ROE 予想')))+kv('ROA 実績 / 予想',pc(gf('ROA 実績'))+' / '+pc(gf('ROA 予想')))+
+      kv('最高純益',fm(gf('最高純益'))+' <span class="small">('+esc(gf('最高純益の期（原表）')||'—')+')</span>')+kv('調整1株益',fm(gf('調整1株益（円）'),1))+
+      kv('設備投資 実績 / 予想',fm(gf('設備投資 実績'))+' / '+fm(gf('設備投資 予想')))+kv('減価償却 実績 / 予想',fm(gf('減価償却 実績'))+' / '+fm(gf('減価償却 予想')))+
+      kv('研究開発 実績 / 予想',fm(gf('研究開発 実績'))+' / '+fm(gf('研究開発 予想')))+'</div></section>';
+    h+='<section><h3>キャッシュフロー</h3><div class="scroll"><table><thead><tr><th>項目</th><th>当期</th><th>前期</th></tr></thead><tbody>'+
+      [['営業CF','営業CF'],['投資CF','投資CF'],['財務CF','財務CF'],['フリーCF','フリーCF'],['現金等','現金等']].map(([l,k])=>'<tr><td>'+l+'</td><td>'+fm(gf(k+' 当期'))+'</td><td>'+fm(gf(k+' 前期'))+'</td></tr>').join('')+'</tbody></table></div>';
+    h+='<p class="small">金額は百万円。フリーCF＝営業CF＋投資CF。</p>';
+    const fn=gf('原表・比較の注記'); if(fn) h+='<div class="note">'+esc(fn)+'</div>';
+    h+='</section>';
+  }
+  const ln=g('原表・読み取りの注記'); if(ln && !(F.length&&gf('原表・比較の注記')&&gf('原表・比較の注記').includes(ln))) h+='<section><div class="note">'+esc(ln)+'</div></section>';
+  app.innerHTML=h; window.scrollTo(0,0);
+}
+
+// ===== 理論株価（簡易：資産価値＋事業価値） =====
+function theo(s){
+  const F=(s.f||[])[0]||[]; const gf=n=>F[col('fin',n)]; const L=s.l||[]; const g=n=>L[col('list',n)];
+  const bps=gf('1株純資産（円）'), eqr=gf('自己資本比率');
+  let eps=g('今期予想EPS（円）'), epsSrc='今期予想EPS';
+  if(!isNum(eps)){const a=(s.y||[]).filter(r=>r[col('years','区分')]==='実績'&&isNum(r[col('years','EPS（円）')]));if(a.length){eps=a[a.length-1][col('years','EPS（円）')];epsSrc='直近実績EPS'}}
+  let roe=gf('ROE 予想'), roeSrc='ROE予想'; if(!isNum(roe)){roe=gf('ROE 実績');roeSrc='ROE実績'}
+  if(!isNum(bps)||!isNum(eqr)||eqr<=0) return null;
+  const rate=eqr>=0.8?0.8:eqr>=0.67?0.75:eqr>=0.5?0.7:eqr>=0.33?0.65:eqr>=0.1?0.6:0.5;
+  const asset=Math.max(0,bps*rate);
+  const roeC=isNum(roe)?Math.min(Math.max(roe,0),0.4):0;
+  const corr=1/(1+(1/eqr-1)*0.33);
+  const biz=(isNum(eps)&&eps>0)?eps*roeC*150*corr:0;
+  return {value:Math.round(asset+biz),asset:Math.round(asset),biz:Math.round(biz),bps,eqr,rate,eps,epsSrc,roe,roeSrc,roeC,corr};
+}
+
+// ===== 監視銘柄（Apps Script API 経由でスプレッドシートと同期） =====
+const SID='1FleDcwpRCVdc-19EMSSqsT7bmTMAq2cp_fzuXgJtQX0';
+const SHEET_URL='https://docs.google.com/spreadsheets/d/'+SID+'/edit';
+let W={state:'init',rows:[],err:null,at:null,busy:false,msg:null};
+const cached=store.get('shk-watch',null); if(cached){W.rows=cached.rows||[];W.at=cached.at;}
+function cfg(){return store.get('shk-cfg',null)}
+async function api(action,body){
+  const c=cfg(); if(!c||!c.url||!c.token){const e=new Error('nocfg');e.code='nocfg';throw e}
+  let res;
+  try{
+    if(body){ res=await fetch(c.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({action,token:c.token},body))}); }
+    else { res=await fetch(c.url+(c.url.includes('?')?'&':'?')+'action='+action+'&token='+encodeURIComponent(c.token)); }
+  }catch(e){const x=new Error('offline');x.code=navigator.onLine===false?'offline':'network';throw x}
+  let j; try{j=await res.json()}catch(e){const x=new Error('bad_response');x.code='bad_response';throw x}
+  if(!j.ok){const x=new Error(j.error||'error');x.code=j.error==='unauthorized'?'unauthorized':'api';throw x}
+  return j;
+}
+function errText(e){
+  const c=e&&e.code;
+  if(c==='nocfg') return '接続先がまだ設定されていません。「設定」でApps ScriptのURLと合言葉を入れてください。';
+  if(c==='offline') return 'オフラインです。前回読み込んだ内容を表示しています。';
+  if(c==='network') return 'Apps Scriptにつながりませんでした。URLが正しいか、デプロイの「アクセスできるユーザー」が「全員」になっているか確認してください。';
+  if(c==='bad_response') return 'Apps Scriptから想定外の応答が返りました。URLが「/exec」で終わるウェブアプリのURLか確認してください。';
+  if(c==='unauthorized') return '合言葉が一致しません。「設定」で入れ直してください。';
+  return 'スプレッドシート側でエラーになりました：'+((e&&e.message)||'');
+}
+function applyRows(j){W.rows=j.rows||[];W.at=Date.parse(j.at)||Date.now();store.set('shk-watch',{rows:W.rows,at:W.at});}
+async function readWatch(){
+  if(!cfg()){W.state='nocfg';paintWatch();return}
+  W.state=W.rows.length?'refreshing':'loading'; paintWatch();
+  try{ applyRows(await api('list')); W.state='ok'; W.err=null; }
+  catch(e){ W.err=e; W.state='error'; }
+  paintWatch();
+}
+async function act(label,action,body){
+  if(W.busy) return; W.busy=true; W.msg={t:label+'中…'}; paintWatch();
+  try{ applyRows(await api(action,body)); W.msg={t:label+'しました。'}; W.state='ok'; W.err=null; W.busy=false; paintWatch(); }
+  catch(e){ W.busy=false; W.msg={t:label+'できたか確認できませんでした。'+errText(e),err:true}; await readWatch(); }
+}
+function watched(code){return W.rows.find(o=>o.code===code)}
+function addWatch(code){const s=BY[code];const t=theo(s); act('監視に追加','add',{code,name:s.name,auto:t?t.value:null});}
+function saveWatch(code){
+  const ov=document.getElementById('w-ovr').value.trim(), mu=document.getElementById('w-mult').value.trim(), me=document.getElementById('w-memo').value;
+  const t=theo(BY[code]);
+  act('保存','save',{code,ovr:ov===''?null:pn(ov),mult:mu===''?1.2:pn(mu),memo:me,auto:t?t.value:null});
+}
+function removeWatch(code){act('監視から外す処理','remove',{code});}
+function pn(v){ if(isNum(v)) return v; if(v==null) return null; const t=String(v).trim(); if(!t) return null;
+  const neg=/^\(|^-|^△/.test(t); const n=parseFloat(t.replace(/[^0-9.]/g,'')); if(!isFinite(n)) return null; return neg?-n:n; }
+function judgeCls(j){return j==='買い検討'?'buy':j==='売り検討'?'sell':'hold'}
+function paintWatch(){
+  const c=document.getElementById('wcount'); if(c) c.textContent=W.rows.length?String(W.rows.length):'';
+  if(location.hash==='#watch') renderWatch(); else { const m=location.hash.match(/^#s-([0-9A-Za-z]+)$/); const box=document.getElementById('wbox'); if(m&&box) box.innerHTML=watchBox(m[1].toUpperCase()); }
+}
+function statusLine(){
+  let h='';
+  if(W.msg) h+='<div class="msg'+(W.msg.err?' err':'')+'">'+esc(W.msg.t)+'</div>';
+  if(W.state==='nocfg') h+='<div class="msg err">'+esc(errText({code:'nocfg'}))+'</div><div class="actions"><a class="btn" href="#settings">設定を開く</a></div>';
+  if(W.state==='error'){ h+='<div class="msg err">'+esc(errText(W.err))+'</div>'; if(['unauthorized','network','bad_response'].includes(W.err&&W.err.code)) h+='<div class="actions"><a class="btn ghost" href="#settings">設定を開く</a></div>'; }
+  return h;
+}
+function renderWatch(){
+  setTab('watch');
+  const rows=W.rows.slice().sort((a,b)=>(isNum(a.dev)?a.dev:9)-(isNum(b.dev)?b.dev:9));
+  const nb=rows.filter(o=>o.judge==='買い検討').length, ns=rows.filter(o=>o.judge==='売り検討').length;
+  let h='<div class="wsum"><span class="pill buy">買い検討 '+nb+'</span><span class="pill sell">売り検討 '+ns+'</span><span class="grow small">'+(W.state==='loading'||W.state==='refreshing'?'読み込み中…':W.at?new Date(W.at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+' 時点':'')+'</span><button class="btn ghost" data-act="reload"'+(W.busy?' disabled':'')+'>再読み込み</button></div>';
+  h+=statusLine();
+  if(!rows.length&&W.state!=='loading') h+='<div class="empty">監視銘柄はまだありません。銘柄一覧から銘柄を開き「監視に追加」を押してください。</div>';
+  h+='<div style="border-top:1px solid var(--rule)">'+rows.map(o=>{
+    const pos=(isNum(o.px)&&isNum(o.theo)&&o.theo>0)?Math.max(0,Math.min(100,o.px/o.theo/ (2) *100)):null;
+    const sl=(isNum(o.mult))?Math.min(100,o.mult/2*100):60;
+    return '<a class="wrow" href="#s-'+esc(o.code)+'"><span class="code">'+esc(o.code)+'</span><span class="nm">'+esc(o.name)+'</span><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span>'+
+    '<span class="sub num"><span>株価 <b>'+fm(o.px,0)+'</b></span><span>理論 <b>'+fm(o.theo,0)+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,0)+'</b></span></span>'+
+    (pos!=null?'<span class="bar" aria-hidden="true"><b style="left:0;width:50%;background:var(--buy-soft)"></b><b style="left:'+sl+'%;right:0;background:var(--sell-soft)"></b><i style="left:'+pos+'%"></i></span>':'')+
+    (o.memo?'<span class="sub">'+esc(o.memo)+'</span>':'')+'</a>'}).join('')+'</div>';
+  h+='<p class="small">株価は株探から取得（取れないときは毎日の自動記録の終値）。帯の左半分が理論株価未満（買い検討）、右の色付き部分が売り検討ライン超え。<a href="'+SHEET_URL+'">スプレッドシートを開く</a></p>';
+  app.innerHTML=h;
+}
+function watchBox(code){
+  const s=BY[code]; const t=theo(s); const o=watched(code);
+  let h='<div class="theo">';
+  h+='<div class="big num"><div><span>自動理論株価</span><b>'+(t?fm(t.value,0)+'円':'—')+'</b></div>'+
+     (o?'<div><span>採用理論株価</span><b>'+fm(o.theo,0)+'円</b></div><div><span>現在株価</span><b>'+fm(o.px,0)+'円</b></div><div><span>判定</span><b><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span></b></div>':
+       (t&&isNum(s._px)?'<div><span>紙面株価との差</span><b>'+pc(s._px/t.value-1)+'</b></div>':''))+'</div>';
+  if(t) h+='<details class="f"><summary>計算の内訳</summary><div class="num">'+
+    '<span>資産価値 '+fm(t.asset,0)+'円 ＝ 1株純資産 '+fm(t.bps,1)+' × 割引評価率 '+t.rate.toFixed(2)+'（自己資本比率 '+pc(t.eqr)+'）</span>'+
+    '<span>事業価値 '+fm(t.biz,0)+'円 ＝ '+t.epsSrc+' '+fm(t.eps,1)+' × '+t.roeSrc+' '+pc(t.roeC)+'（上限40%）× 150 × 財務レバレッジ補正 '+t.corr.toFixed(2)+'</span>'+
+    '<span>補正 ＝ 1 ÷ (1 ＋ (1/自己資本比率 − 1) × 0.33)。EPSが赤字なら事業価値は0。</span></div></details>';
+  else h+='<p class="small">1株純資産か自己資本比率が未判読のため自動計算できません。監視に追加して理論株価を手入力してください。</p>';
+  h+=statusLine().replace('<div class="actions">','<div class="actions">');
+  if(W.state==='nocfg'){} 
+  else if(!o) h+='<div class="actions"><button class="btn" data-act="add" data-code="'+esc(code)+'"'+(W.busy||W.state==='loading'?' disabled':'')+'>監視に追加</button></div>';
+  else h+='<div class="form"><label for="w-ovr">理論株価の上書き（円、空欄なら自動）<input id="w-ovr" inputmode="decimal" value="'+(isNum(o.ovr)?o.ovr:'')+'" placeholder="'+(t?t.value:'')+'"></label>'+
+    '<label for="w-mult">売り倍率（理論株価の何倍で売り検討）<input id="w-mult" inputmode="decimal" value="'+(isNum(o.mult)?o.mult:1.2)+'"></label>'+
+    '<label class="wide" for="w-memo">メモ（投資ストーリーなど）<input id="w-memo" value="'+esc(o.memo)+'"></label></div>'+
+    '<div class="actions"><button class="btn" data-act="save" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>保存</button><button class="btn danger" data-act="remove" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>監視から外す</button></div>';
+  h+='</div>';
+  return h;
+}
+function setTab(t){for(const k of ['all','watch','settings']){const el=document.getElementById('t-'+k); if(el) el.setAttribute('aria-current',t===k?'page':'false')}}
+app.addEventListener('click',async e=>{const b=e.target.closest('button[data-act]'); if(!b) return; e.preventDefault(); const a=b.dataset.act, c=b.dataset.code;
+  if(a==='reload'){W.msg=null;readWatch()} else if(a==='add') addWatch(c); else if(a==='save') saveWatch(c);
+  else if(a==='remove'){ if(b.dataset.confirm){removeWatch(c)} else {b.dataset.confirm='1';b.textContent='本当に外す（もう一度押す）'} } });
+
+// ===== 端末内のデータ保存（IndexedDB） =====
+function idb(){return new Promise((ok,ng)=>{try{const r=indexedDB.open('shikiho-viewer',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>ok(r.result);r.onerror=()=>ng(r.error)}catch(e){ng(e)}})}
+async function idbGet(k){try{const db=await idb();return await new Promise((ok,ng)=>{const q=db.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>ok(q.result);q.onerror=()=>ng(q.error)})}catch(e){return null}}
+async function idbSet(k,v){try{const db=await idb();await new Promise((ok,ng)=>{const t=db.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=ok;t.onerror=()=>ng(t.error)})}catch(e){}}
+let S={busy:false,msg:null};
+async function fetchData(){
+  S.busy=true; S.msg={t:'四季報データを取得中…（初回は20〜40秒ほどかかります）'}; if(location.hash==='#settings') renderSettings();
+  try{ const j=await api('data'); D=j.data; D.fetchedAt=new Date().toISOString(); await idbSet('data',D); prep(); S.msg={t:D.s.length.toLocaleString()+'銘柄のデータを取り込みました。'}; S.busy=false; return true; }
+  catch(e){ S.busy=false; S.msg={t:'データを取得できませんでした。'+errText(e),err:true}; return false; }
+  finally{ if(location.hash==='#settings') renderSettings(); }
+}
+function renderSettings(){
+  setTab('settings');
+  const c=cfg()||{};
+  let h='<section><h3>接続設定</h3><div class="theo"><div class="form">'+
+    '<label class="wide" for="c-url">Apps Script ウェブアプリのURL（…/exec）<input id="c-url" inputmode="url" autocomplete="off" value="'+esc(c.url||'')+'" placeholder="https://script.google.com/macros/s/…/exec"></label>'+
+    '<label class="wide" for="c-token">合言葉（Code.gs の TOKEN）<input id="c-token" autocomplete="off" value="'+esc(c.token||'')+'"></label></div>'+
+    '<div class="actions"><button class="btn" data-act="cfg-save"'+(S.busy?' disabled':'')+'>保存して接続を確かめる</button></div>';
+  if(S.msg) h+='<div class="msg'+(S.msg.err?' err':'')+'">'+esc(S.msg.t)+'</div>';
+  h+='</div></section>';
+  h+='<section><h3>四季報データ</h3><div class="theo"><p class="small" style="margin:0">'+(D?esc(D.src||'')+'　'+D.s.length.toLocaleString()+'銘柄　'+(D.fetchedAt?new Date(D.fetchedAt).toLocaleString('ja-JP')+' 取得':''):'まだ取り込んでいません。')+'</p>'+
+    '<p class="small" style="margin:0">データはこの端末に保存され、オフラインでも見られます。元のスプレッドシートを更新したら下のボタンで取り込み直してください。</p>'+
+    '<div class="actions"><button class="btn ghost" data-act="data-refresh"'+(S.busy||!cfg()?' disabled':'')+'>四季報データを取り込み直す</button></div></div></section>';
+  h+='<section><h3>ホーム画面に追加</h3><div class="theo small"><span>iPhone：Safariでこのページを開き、共有ボタン →「ホーム画面に追加」。</span><span>Android：Chromeのメニュー（︙）→「ホーム画面に追加」または「アプリをインストール」。</span></div></section>';
+  h+='<p class="small"><a href="'+SHEET_URL+'">監視銘柄のスプレッドシートを開く</a></p>';
+  app.innerHTML=h;
+}
+app.addEventListener('click',async e=>{const b=e.target.closest('button[data-act]'); if(!b) return; const a=b.dataset.act;
+  if(a==='cfg-save'){ e.preventDefault(); const url=document.getElementById('c-url').value.trim(), token=document.getElementById('c-token').value.trim();
+    if(!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)){S.msg={t:'URLは https://script.google.com/macros/s/…/exec の形で入れてください。',err:true};renderSettings();return}
+    store.set('shk-cfg',{url,token}); S.busy=true; S.msg={t:'接続を確かめています…'}; renderSettings();
+    try{ await api('ping'); S.busy=false; S.msg={t:'つながりました。'}; renderSettings(); readWatch(); if(!D){ if(await fetchData()) { location.hash=''; } } }
+    catch(err){ S.busy=false; S.msg={t:errText(err),err:true}; renderSettings(); } }
+  if(a==='data-refresh'){ e.preventDefault(); await fetchData(); }
+});
+async function boot(){
+  const saved=await idbGet('data');
+  if(saved&&saved.s){D=saved;prep();route();readWatch();return}
+  if(cfg()){ app.innerHTML='<div class="loading">四季報データを取得しています…（初回は20〜40秒ほどかかります）</div>'; if(await fetchData()){route();readWatch();return} }
+  if(location.hash!=='#settings') location.hash='settings'; else renderSettings();
+}
+function route(){ if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#watch'){renderWatch();return} setTab('all'); const m=location.hash.match(/^#s-([0-9A-Za-z]+)$/); if(m) renderDetail(m[1].toUpperCase()); else renderList(); }
+let t; qEl.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{shown=100;if(location.hash)location.hash='';renderList()},120)});
+qEl.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=qEl.value.trim().toUpperCase().normalize('NFKC');if(BY[v]){location.hash='s-'+v}}});
+sortEl.addEventListener('change',()=>{shown=100;if(location.hash)location.hash='';renderList()});
+for(const k of ['up','yld','num']){const b=document.getElementById('f-'+k);b.onclick=()=>{flt[k]=!flt[k];b.setAttribute('aria-pressed',flt[k]);shown=100;if(location.hash)location.hash='';renderList()}}
+window.addEventListener('hashchange',route);
+boot();
+})();
+</script>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{})})}</script>
+</body>
+</html>
