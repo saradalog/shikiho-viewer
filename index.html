@@ -108,8 +108,9 @@ tr:last-child td{border-bottom:0}
 .empty{padding:28px 0;color:var(--muted)}
 .loading{padding:40px 0;color:var(--muted)}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--rule)}
-.tabs a{padding:6px 12px;text-decoration:none;color:var(--muted);font-weight:700;font-size:14px;border-bottom:3px solid transparent;margin-bottom:-1px}
+.tabs a{white-space:nowrap;padding:6px 12px;text-decoration:none;color:var(--muted);font-weight:700;font-size:14px;border-bottom:3px solid transparent;margin-bottom:-1px}
 .tabs a[aria-current="page"]{color:var(--ink);border-color:var(--accent)}
+@media (max-width:420px){.tabs{gap:0}.tabs a{padding:6px 7px;font-size:13px}}
 #wcount{margin-left:6px;font-size:11px;color:var(--surface);background:var(--accent);border-radius:999px;padding:0 6px}
 #wcount:empty{display:none}
 #hcount{margin-left:6px;font-size:11px;color:var(--surface);background:var(--accent);border-radius:999px;padding:0 6px}
