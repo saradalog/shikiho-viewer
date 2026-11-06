@@ -462,10 +462,12 @@ async function fillAuto(){
   try{
     const todo=W.rows.filter(o=>!isNum(o.auto)&&BY[o.code]).map(o=>({o,t:theo(BY[o.code])})).filter(x=>x.t&&isNum(x.t.value));
     let n=0;
+    let fail=0;
     for(const {o,t} of todo){
-      if(W.busy) break;
+      while(W.busy) await new Promise(r=>setTimeout(r,500));   // 他の操作の途中なら終わるまで待つ（止めない）
       try{ applyRows(await api('save',{code:o.code,ovr:o.ovr,mult:isNum(o.mult)?o.mult:1.2,memo:o.memo,auto:t.value})); n++;
-        W.msg={t:'理論株価を書き込み中… '+n+'/'+todo.length}; paintWatch(); }catch(e){ break; }
+        W.msg={t:'理論株価を書き込み中… '+n+'/'+todo.length+'（アプリを開いたままにしてください）'}; paintWatch(); }
+      catch(e){ if(++fail>=3) break; }
     }
     if(n){ W.msg={t:n+'銘柄の理論株価を書き込みました。'}; paintWatch(); }
   } finally { FILLING=false; }
