@@ -179,12 +179,15 @@ details.f div{font-size:12.5px;color:var(--muted);padding-top:6px;display:grid;g
       <option value="opm">予想営業利益率 高い順</option>
       <option value="shy">株主還元利回り 高い順</option>
       <option value="pick">割安×高還元（おすすめ）を先に</option>
+      <option value="sat">サテライト候補の順位</option>
     </select>
   </div>
   <div class="chips" role="group" aria-label="絞り込み">
     <button class="chip" id="f-up" aria-pressed="false">予想 増収増益</button>
     <button class="chip" id="f-yld" aria-pressed="false">利回り3%以上</button>
     <button class="chip" id="f-num" aria-pressed="false">数値ありのみ</button>
+    <button class="chip" id="f-g17" aria-pressed="false">成長17分野</button>
+    <button class="chip" id="f-sat" aria-pressed="false">サテライト候補</button>
   </div>
 </div></header>
 <main class="wrap" id="app"><div class="loading">データを読み込んでいます…</div></main>
@@ -192,7 +195,7 @@ details.f div{font-size:12.5px;color:var(--muted);padding-top:6px;display:grid;g
 (function(){
 const app=document.getElementById('app'), qEl=document.getElementById('q'), sortEl=document.getElementById('sort');
 let D=null, H=null, IDX={}, BY={}, shown=100;
-const flt={up:false,yld:false,num:false};
+const flt={up:false,yld:false,num:false,g17:false,sat:false};
 const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 
 function isNum(x){return typeof x==='number'&&isFinite(x)}
@@ -215,6 +218,9 @@ function prep(){
     s._key=(s.code+' '+(s.name||'')).toLowerCase().normalize('NFKC');
     s._has=isNum(s._px);
   }
+  const G=D.g17||{}, SAT=(D.sat&&D.sat.rows)||[];
+  for(const s of D.s){ s._g17=G[s.code]||''; s._sat=null; }
+  for(const o of SAT){ if(BY[o.code]) BY[o.code]._sat=o; }
   fitC2();
   // 黒字続きの銘柄の中での還元利回りの中央値（検証のK2：割安上位のうち還元利回りが中央値以上）
   const ys=D.s.map(x=>{const i=inputs(x);return i&&i.good&&isNum(x._shy)?x._shy:null}).filter(isNum).sort((a,b)=>a-b);
@@ -223,12 +229,14 @@ function prep(){
   const b=document.getElementById('brand-sub'); if(b) b.textContent='J-Quants最新・'+D.s.length.toLocaleString()+'銘柄';
 }
 
+function satKey(s){const o=s._sat;if(!o)return 1e9;return (o.kind==='保有'?0:1e6)+(isNum(o.rank)?o.rank:9999)}
+function satPill(s){const o=s&&s._sat;if(!o)return '';return '<span class="pill '+(o.kind==='保有'?'buy':'hold')+'">サテライト'+(o.kind==='保有'?'保有候補':'監視')+(isNum(o.rank)?' '+o.rank+'位':'')+'</span>'}
 function filtered(){
   const q=qEl.value.trim().toLowerCase().normalize('NFKC');
-  let a=D.s.filter(s=>(!q||s._key.includes(q))&&(!flt.num||s._has)&&(!flt.yld||(isNum(s._yld)&&s._yld>=0.03))&&(!flt.up||(isNum(s._opg)&&s._opg>0&&isNum(s._rvg)&&s._rvg>0)));
+  let a=D.s.filter(s=>(!q||s._key.includes(q))&&(!flt.num||s._has)&&(!flt.yld||(isNum(s._yld)&&s._yld>=0.03))&&(!flt.up||(isNum(s._opg)&&s._opg>0&&isNum(s._rvg)&&s._rvg>0))&&(!flt.g17||s._g17)&&(!flt.sat||s._sat));
   const k=sortEl.value, asc=(f)=>(x,y)=>{const a=x[f],b=y[f];const na=!isNum(a)||(f==='_per'&&a<=0),nb=!isNum(b)||(f==='_per'&&b<=0);if(na&&nb)return 0;if(na)return 1;if(nb)return -1;return a-b};
   const desc=(f)=>(x,y)=>{const a=x[f],b=y[f];if(!isNum(a)&&!isNum(b))return 0;if(!isNum(a))return 1;if(!isNum(b))return -1;return b-a};
-  if(k==='per')a.sort(asc('_per')); else if(k==='pbr')a.sort(asc('_pbr')); else if(k==='yld')a.sort(desc('_yld')); else if(k==='opg')a.sort(desc('_opg')); else if(k==='opm')a.sort(desc('_opm')); else if(k==='shy')a.sort(desc('_shy')); else if(k==='pick')a.sort((x,y)=>(y._pick-x._pick)||((isNum(y._shy)?y._shy:-1)-(isNum(x._shy)?x._shy:-1)));
+  if(k==='per')a.sort(asc('_per')); else if(k==='pbr')a.sort(asc('_pbr')); else if(k==='yld')a.sort(desc('_yld')); else if(k==='opg')a.sort(desc('_opg')); else if(k==='opm')a.sort(desc('_opm')); else if(k==='shy')a.sort(desc('_shy')); else if(k==='sat')a.sort((x,y)=>satKey(x)-satKey(y)); else if(k==='pick')a.sort((x,y)=>(y._pick-x._pick)||((isNum(y._shy)?y._shy:-1)-(isNum(x._shy)?x._shy:-1)));
   return a;
 }
 
@@ -239,7 +247,7 @@ function renderList(){
   h+='<div class="meta">'+a.length.toLocaleString()+'銘柄'+(a.length>shown?'（先頭'+shown+'件を表示）':'')+'　株価は前営業日終値（J-Quants）</div>';
   if(!a.length){app.innerHTML=h+'<div class="empty">該当する銘柄がありません。検索語や絞り込みを変えてください。</div>';return}
   h+='<ul class="list">'+a.slice(0,shown).map(s=>'<li><a href="#s-'+esc(s.code)+'"><span class="code">'+esc(s.code)+'</span><span class="nm">'+esc(s.name)+'</span><span class="px num">'+(s._has?fm(s._px,0)+'円':'<span class="small">数値未判読</span>')+'</span>'+
-    (s._has?'<span class="sub num"><span>PER <b>'+(isNum(s._per)?s._per.toFixed(1):'—')+'</b></span><span>PBR <b>'+(isNum(s._pbr)?s._pbr.toFixed(2):'—')+'</b></span><span>利回り <b>'+pc(s._yld)+'</b></span><span>営業増益 <b>'+pc(s._opg)+'</b></span><span>還元 <b>'+pc(s._shy)+'</b></span>'+(s._pick?'<span class="pill buy">割安×高還元</span>':'')+'</span>':'')+'</a></li>').join('')+'</ul>';
+    (s._has?'<span class="sub num"><span>PER <b>'+(isNum(s._per)?s._per.toFixed(1):'—')+'</b></span><span>PBR <b>'+(isNum(s._pbr)?s._pbr.toFixed(2):'—')+'</b></span><span>利回り <b>'+pc(s._yld)+'</b></span><span>営業増益 <b>'+pc(s._opg)+'</b></span><span>還元 <b>'+pc(s._shy)+'</b></span>'+(s._pick?'<span class="pill buy">割安×高還元</span>':'')+satPill(s)+(s._g17?'<span class="small">17分野 '+s._g17.split('、').length+'</span>':'')+'</span>':'')+'</a></li>').join('')+'</ul>';
   if(a.length>shown) h+='<button class="more" id="more">さらに100件を表示</button>';
   app.innerHTML=h; const m=document.getElementById('more'); if(m) m.onclick=()=>{shown+=100;renderList()};
 }
@@ -262,6 +270,13 @@ function barChart(title,rows,vi){
   return '<div class="chart"><div class="t">'+esc(title)+'<span class="small">（百万円）</span></div>'+s+'</div>';
 }
 
+function satBox(s){
+  const o=s._sat; let h='<section><h3>サテライト・成長17分野</h3>';
+  h+=s._g17?'<div class="sub" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+s._g17.split('、').map(f=>'<span class="pill hold">'+esc(f)+'</span>').join('')+'</div>':'<p class="small">成長17分野には該当なし（言葉と業種からの機械的な判定）。</p>';
+  if(o) h+='<div class="tiles num"><div class="tile"><div class="k">区分</div><div class="v">'+esc(o.kind==='保有'?'保有候補':'監視')+'</div></div><div class="tile"><div class="k">順位</div><div class="v">'+(isNum(o.rank)?o.rank+'位':'圏外')+'</div></div><div class="tile"><div class="k">営業利益/EV</div><div class="v">'+pc(o.evop)+'</div></div><div class="tile"><div class="k">ROIC</div><div class="v">'+pc(o.roic)+'</div></div><div class="tile"><div class="k">3年平均FCF/EV</div><div class="v">'+pc(o.fcf)+'</div></div><div class="tile"><div class="k">EV（億円）</div><div class="v">'+fm(o.ev,0)+'</div></div></div>'+(o.since?'<p class="small">保有候補になった日：'+esc(o.since)+'</p>':'');
+  else h+='<p class="small">今のサテライト候補（保有10・監視50）には入っていません。</p>';
+  return h+'<p class="small">'+esc((D.sat&&D.sat.note)||'')+'</p></section>';
+}
 function renderDetail(code){
   const s=BY[code]; if(!s){app.innerHTML='<a class="back" href="#">← 一覧へ</a><div class="empty">銘柄コード「'+esc(code)+'」は収録されていません。</div>';return}
   let rec=store.get('shk-recent',[]).filter(c=>c!==code); rec.unshift(code); store.set('shk-recent',rec.slice(0,8));
@@ -278,6 +293,7 @@ function renderDetail(code){
     '<div class="tile"><div class="k">予想配当利回り</div><div class="v">'+(isNum(g('配当利回り下限'))&&g('配当利回り下限')!==g('配当利回り上限')?pc(g('配当利回り下限'))+'〜':'')+pc(g('配当利回り上限'))+'</div></div>'+
     '<div class="tile"><div class="k">今期予想営業利益率</div><div class="v">'+pc(s._opm)+'</div></div></div>';
   h+='<section><h3>理論株価と監視</h3><div id="wbox">'+watchBox(code)+'</div></section>';
+  h+=satBox(s);
   const comment = gc('特色（原文）')||gc('コメント1（原文）');
   if(comment){
     h+='<section><h3>特色・コメント</h3><div class="cm">';
@@ -479,7 +495,8 @@ function statusLine(){
 }
 function renderWatch(kind){
   kind=kind||'watch'; setTab(kind);
-  const rows=W.rows.filter(o=>kind==='hold'?isHold(o):!isHold(o)).map(view).sort((a,b)=>(isNum(a.dev)?a.dev:9)-(isNum(b.dev)?b.dev:9));
+  const isSat=o=>/^サテライト/.test(String(o.memo||''));
+  const rows=W.rows.filter(o=>kind==='hold'?isHold(o):!isHold(o)).map(view).sort((a,b)=>(isSat(a)-isSat(b))||(isSat(a)?(satKey(BY[a.code]||{})-satKey(BY[b.code]||{})):((isNum(a.dev)?a.dev:9)-(isNum(b.dev)?b.dev:9))));
   const nb=rows.filter(o=>o.judge==='買い検討').length, ns=rows.filter(o=>o.judge==='売り検討').length;
   let h='<div class="wsum"><span class="pill buy">買い検討 '+nb+'</span><span class="pill sell">売り検討 '+ns+'</span><span class="grow small">'+(W.state==='loading'||W.state==='refreshing'?'読み込み中…':W.at?new Date(W.at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+' 時点':'')+'</span><button class="btn ghost" data-act="reload"'+(W.busy?' disabled':'')+'>再読み込み</button></div>';
   h+=statusLine();
@@ -493,7 +510,7 @@ function renderWatch(kind){
     const pos=(isNum(o.px)&&isNum(o.theo)&&o.theo>0)?Math.max(0,Math.min(100,o.px/o.theo/ (2) *100)):null;
     const sl=(isNum(o.mult))?Math.min(100,o.mult/2*100):60;
     return '<a class="wrow" href="#s-'+esc(o.code)+'"><span class="code">'+esc(o.code)+'</span><span class="nm">'+esc(o.name)+'</span><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span>'+
-    '<span class="sub num">'+(o.judge==='買い検討'&&BY[o.code]&&BY[o.code]._pick?'<span class="pill buy">割安×高還元</span>':'')+(BY[o.code]&&isNum(BY[o.code]._shy)?'<span>還元 <b>'+pc(BY[o.code]._shy)+'</b></span>':'')+'<span>株価 <b>'+fm(o.px,0)+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,0)+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,0)+'</b></span></span>'+
+    '<span class="sub num">'+satPill(BY[o.code])+(BY[o.code]&&BY[o.code]._sat&&isNum(BY[o.code]._sat.evop)?'<span>営業利益/EV <b>'+pc(BY[o.code]._sat.evop)+'</b></span>':'')+(o.judge==='買い検討'&&BY[o.code]&&BY[o.code]._pick?'<span class="pill buy">割安×高還元</span>':'')+(BY[o.code]&&isNum(BY[o.code]._shy)?'<span>還元 <b>'+pc(BY[o.code]._shy)+'</b></span>':'')+'<span>株価 <b>'+fm(o.px,0)+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,0)+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,0)+'</b></span></span>'+
     (pos!=null?'<span class="bar" aria-hidden="true"><b style="left:0;width:50%;background:var(--buy-soft)"></b><b style="left:'+sl+'%;right:0;background:var(--sell-soft)"></b><i style="left:'+pos+'%"></i></span>':'')+
     (kind==='hold'?holdSub(o):'')+
     (memoBody(o)?'<span class="sub">'+esc(memoBody(o))+'</span>':'')+'</a>'}).join('')+'</div>';
@@ -623,7 +640,7 @@ function route(){ if(location.hash==='#settings'){renderSettings();return} if(!D
 let t; qEl.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{shown=100;if(location.hash)location.hash='';renderList()},120)});
 qEl.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=qEl.value.trim().toUpperCase().normalize('NFKC');if(BY[v]){location.hash='s-'+v}}});
 sortEl.addEventListener('change',()=>{shown=100;if(location.hash)location.hash='';renderList()});
-for(const k of ['up','yld','num']){const b=document.getElementById('f-'+k);b.onclick=()=>{flt[k]=!flt[k];b.setAttribute('aria-pressed',flt[k]);shown=100;if(location.hash)location.hash='';renderList()}}
+for(const k of ['up','yld','num','g17','sat']){const b=document.getElementById('f-'+k);b.onclick=()=>{flt[k]=!flt[k];b.setAttribute('aria-pressed',flt[k]);shown=100;if(location.hash)location.hash='';renderList()}}
 window.addEventListener('hashchange',route);
 boot();
 })();
