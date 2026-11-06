@@ -229,6 +229,7 @@ function prep(){
   const G=D.g17||{}, SAT=(D.sat&&D.sat.rows)||[];
   for(const s of D.s){ s._g17=G[s.code]||''; s._sat=null; }
   for(const o of SAT){ if(BY[o.code]) BY[o.code]._sat=o; }
+  OLD_GAS=D.g17===undefined;
   fitC2();
   // 黒字続きの銘柄の中での還元利回りの中央値（検証のK2：割安上位のうち還元利回りが中央値以上）
   const ys=D.s.map(x=>{const i=inputs(x);return i&&i.good&&isNum(x._shy)?x._shy:null}).filter(isNum).sort((a,b)=>a-b);
@@ -280,6 +281,7 @@ function barChart(title,rows,vi){
 
 function satBox(s){
   const o=s._sat; let h='<section><h3>サテライト・成長17分野</h3>';
+  if(OLD_GAS) return h+'<div class="msg err">Apps Script（Code.gs）が古いため、成長17分野とサテライト候補を読み込めていません。新しいCode.gsを貼り替えて「新しいバージョン」でデプロイしてください。</div></section>';
   h+=s._g17?'<div class="sub" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+s._g17.split('、').map(f=>'<span class="pill hold">'+esc(f)+'</span>').join('')+'</div>':'<p class="small">成長17分野には該当なし（言葉と業種からの機械的な判定）。</p>';
   if(o) h+='<div class="tiles num"><div class="tile"><div class="k">区分</div><div class="v">'+esc(o.kind==='保有'?'保有候補':'監視')+'</div></div><div class="tile"><div class="k">順位</div><div class="v">'+(isNum(o.rank)?o.rank+'位':'圏外')+'</div></div><div class="tile"><div class="k">営業利益/EV</div><div class="v">'+pc(o.evop)+'</div></div><div class="tile"><div class="k">ROIC</div><div class="v">'+pc(o.roic)+'</div></div><div class="tile"><div class="k">3年平均FCF/EV</div><div class="v">'+pc(o.fcf)+'</div></div><div class="tile"><div class="k">EV（億円）</div><div class="v">'+fm(o.ev,0)+'</div></div></div>'+(o.since?'<p class="small">保有候補になった日：'+esc(o.since)+'</p>':'');
   else h+='<p class="small">今のサテライト候補（保有10・監視50）には入っていません。</p>';
@@ -646,9 +648,11 @@ function lastUpdate(){
   while([0,6].includes(new Date(d.getTime()+9*3600e3).getUTCDay())) d=new Date(d.getTime()-864e5);
   return d.getTime();
 }
-let refreshing=false;
+let refreshing=false, triedNew=false; var OLD_GAS=false;
 async function autoRefresh(){
-  if(refreshing||!cfg()||!D||Date.parse(D.fetchedAt||0)>=lastUpdate()) return;
+  const noNew=D&&D.g17===undefined&&!triedNew;   // 成長17分野・サテライト候補が入る前の古いデータなら、一度だけ取り直す
+  if(refreshing||!cfg()||!D||(Date.parse(D.fetchedAt||0)>=lastUpdate()&&!noNew)) return;
+  if(noNew) triedNew=true;
   refreshing=true; const b=document.getElementById('brand-sub'); if(b) b.textContent='最新データを取り込み中…';
   const ok=await fetchData(); refreshing=false;
   if(ok){ const typing=document.activeElement&&document.activeElement.tagName==='INPUT'; if(!typing) route(); }
