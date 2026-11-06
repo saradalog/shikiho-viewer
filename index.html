@@ -445,6 +445,22 @@ async function readWatch(){
   try{ applyRows(await api('list')); W.state='ok'; W.err=null; }
   catch(e){ W.err=e; W.state='error'; }
   paintWatch();
+  if(W.state==='ok') fillAuto();
+}
+// 自動理論株価が空の監視銘柄（サテライト候補など、シート側で足した行）に、アプリの理論株価を書き込む
+let FILLING=false;
+async function fillAuto(){
+  if(FILLING||!D) return; FILLING=true;
+  try{
+    const todo=W.rows.filter(o=>!isNum(o.auto)&&BY[o.code]).map(o=>({o,t:theo(BY[o.code])})).filter(x=>x.t&&isNum(x.t.value));
+    let n=0;
+    for(const {o,t} of todo){
+      if(W.busy) break;
+      try{ applyRows(await api('save',{code:o.code,ovr:o.ovr,mult:isNum(o.mult)?o.mult:1.2,memo:o.memo,auto:t.value})); n++;
+        W.msg={t:'理論株価を書き込み中… '+n+'/'+todo.length}; paintWatch(); }catch(e){ break; }
+    }
+    if(n){ W.msg={t:n+'銘柄の理論株価を書き込みました。'}; paintWatch(); }
+  } finally { FILLING=false; }
 }
 async function act(label,action,body){
   if(W.busy) return; W.busy=true; W.msg={t:label+'中…'}; paintWatch();
