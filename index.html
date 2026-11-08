@@ -56,7 +56,9 @@ header.top .wrap{padding-top:12px;padding-bottom:10px;display:grid;grid-template
 ul.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule)}
 ul.list li a{display:grid;grid-template-columns:52px 1fr auto;gap:2px 10px;padding:10px 4px;border-bottom:1px solid var(--rule);text-decoration:none;color:inherit}
 ul.list li a:hover{background:var(--surface)}
-.code{font-weight:700;color:var(--accent)}
+.code{font-weight:700;color:var(--accent);overflow-wrap:anywhere}
+ul.list.wide li a{grid-template-columns:78px 1fr auto}
+.wrow.wide{grid-template-columns:78px 1fr auto}
 .nm{font-weight:700;overflow-wrap:anywhere}
 .px{text-align:right;font-weight:700}
 .sub{grid-column:2 / 4;display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12.5px}
@@ -249,6 +251,7 @@ function prepOne(d,m){
     const sy=g('株主還元利回り（配当＋自社株買い）'); s._shy=isNum(sy)?sy:(isNum(s._yld)?s._yld:null); s._shySrc=isNum(sy)?'':'配当のみ';
     s._key=(s.code+' '+(s.name||'')).toLowerCase().normalize('NFKC');
     s._has=isNum(s._px);
+    if(m!=='jp'&&!isNum(s._opg)) s._opg=g('予想EPS成長率対直近実績');
     s._pc=g('株価通貨')||(m==='jp'?'円':''); s._fc=g('財務通貨')||s._pc;
   }
   const G=d.g17||{}, SAT=(d.sat&&d.sat.rows)||[];
@@ -302,8 +305,8 @@ function renderList(){
   if(rec.length && !qEl.value) h+='<div class="recent"><span class="small">最近見た銘柄：</span>'+rec.map(c=>'<a href="#s-'+esc(c)+'">'+esc(c)+' '+esc(BY[c].name)+'</a>').join('')+'</div>';
   h+='<div class="meta">'+a.length.toLocaleString()+'銘柄'+(a.length>shown?'（先頭'+shown+'件を表示）':'')+'　'+(MK==='jp'?'株価は前営業日終値（J-Quants）':'株価・財務はYahoo Finance（毎月9日ごろ更新）。金額は財務の通貨、株価・EPS・配当は株価の通貨')+'</div>';
   if(!a.length){app.innerHTML=h+'<div class="empty">該当する銘柄がありません。検索語や絞り込みを変えてください。</div>';return}
-  h+='<ul class="list">'+a.slice(0,shown).map(s=>'<li><a href="#s-'+esc(s.code)+'"><span class="code">'+esc(s.code)+'</span><span class="nm">'+esc(s.name)+'</span><span class="px num">'+(s._has?fm(s._px,pd(s))+cu(s):'<span class="small">数値未判読</span>')+'</span>'+
-    (s._has?'<span class="sub num"><span>PER <b>'+(isNum(s._per)?s._per.toFixed(1):'—')+'</b></span><span>PBR <b>'+(isNum(s._pbr)?s._pbr.toFixed(2):'—')+'</b></span><span>利回り <b>'+pc(s._yld)+'</b></span><span>営業増益 <b>'+pc(s._opg)+'</b></span><span>還元 <b>'+pc(s._shy)+'</b></span>'+(s._pick?'<span class="pill buy">割安×高還元</span>':'')+satPill(s)+(s._g17?'<span class="small">17分野 '+s._g17.split('、').length+'</span>':'')+'</span>':'')+'</a></li>').join('')+'</ul>';
+  h+='<ul class="list'+(MK==='jp'?'':' wide')+'">'+a.slice(0,shown).map(s=>'<li><a href="#s-'+esc(s.code)+'"><span class="code">'+esc(s.code)+'</span><span class="nm">'+esc(s.name)+'</span><span class="px num">'+(s._has?fm(s._px,pd(s))+cu(s):'<span class="small">数値未判読</span>')+'</span>'+
+    (s._has?'<span class="sub num"><span>PER <b>'+(isNum(s._per)?s._per.toFixed(1):'—')+'</b></span><span>PBR <b>'+(isNum(s._pbr)?s._pbr.toFixed(2):'—')+'</b></span><span>利回り <b>'+pc(s._yld)+'</b></span><span>'+(MK==='jp'?'営業増益':'EPS成長')+' <b>'+pc(s._opg)+'</b></span><span>還元 <b>'+pc(s._shy)+'</b></span>'+(s._pick?'<span class="pill buy">割安×高還元</span>':'')+satPill(s)+(s._g17?'<span class="small">17分野 '+s._g17.split('、').length+'</span>':'')+'</span>':'')+'</a></li>').join('')+'</ul>';
   if(a.length>shown) h+='<button class="more" id="more">さらに100件を表示</button>';
   app.innerHTML=h; const m=document.getElementById('more'); if(m) m.onclick=()=>{shown+=100;renderList()};
 }
@@ -587,7 +590,7 @@ function renderWatch(kind){
   h+='<div style="border-top:1px solid var(--rule)">'+rows.map(o=>{
     const pos=(isNum(o.px)&&isNum(o.theo)&&o.theo>0)?Math.max(0,Math.min(100,o.px/o.theo/ (2) *100)):null;
     const sl=(isNum(o.mult))?Math.min(100,o.mult/2*100):60;
-    return '<a class="wrow" href="#s-'+esc(o.code)+'"><span class="code">'+esc(o.code)+'</span><span class="nm">'+esc(o.name)+'</span><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span>'+
+    return '<a class="wrow'+(kindOf(o.code)==='jp'?'':' wide')+'" href="#s-'+esc(o.code)+'"><span class="code">'+esc(o.code)+'</span><span class="nm">'+esc(o.name)+'</span><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span>'+
     '<span class="sub num">'+satPill(BY[o.code])+(BY[o.code]&&BY[o.code]._sat&&isNum(BY[o.code]._sat.evop)?'<span>営業利益/EV <b>'+pc(BY[o.code]._sat.evop)+'</b></span>':'')+(o.judge==='買い検討'&&BY[o.code]&&BY[o.code]._pick?'<span class="pill buy">割安×高還元</span>':'')+(BY[o.code]&&isNum(BY[o.code]._shy)?'<span>還元 <b>'+pc(BY[o.code]._shy)+'</b></span>':'')+'<span>株価 <b>'+fm(o.px,pdC(o.code))+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,pdC(o.code))+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,pdC(o.code))+'</b></span></span>'+
     (pos!=null?'<span class="bar" aria-hidden="true"><b style="left:0;width:50%;background:var(--buy-soft)"></b><b style="left:'+sl+'%;right:0;background:var(--sell-soft)"></b><i style="left:'+pos+'%"></i></span>':'')+
     (kind==='hold'?holdSub(o):'')+
