@@ -187,7 +187,7 @@ html{-webkit-tap-highlight-color:transparent}
       <option value="opm">予想営業利益率 高い順</option>
       <option value="shy">株主還元利回り 高い順</option>
       <option value="pick">割安×高還元（おすすめ）を先に</option>
-      <option value="sat">サテライト候補の順位</option>
+      <option value="sat">営業利益/EVの順位（参考）</option>
     </select>
   </div>
   <div class="chips" role="group" aria-label="絞り込み">
@@ -195,7 +195,7 @@ html{-webkit-tap-highlight-color:transparent}
     <button class="chip" id="f-yld" aria-pressed="false">利回り3%以上</button>
     <button class="chip" id="f-num" aria-pressed="false">数値ありのみ</button>
     <button class="chip" id="f-g17" aria-pressed="false">成長17分野</button>
-    <button class="chip" id="f-sat" aria-pressed="false">サテライト候補</button>
+    <button class="chip" id="f-sat" aria-pressed="false">営業利益/EV上位100</button>
   </div>
 </div></header>
 <main class="wrap" id="app"><div class="loading">データを読み込んでいます…</div></main>
@@ -238,8 +238,8 @@ function prep(){
   const b=document.getElementById('brand-sub'); if(b) b.textContent='J-Quants最新・'+D.s.length.toLocaleString()+'銘柄';
 }
 
-function satKey(s){const o=s._sat;if(!o)return 1e9;return (o.kind==='保有'?0:1e6)+(isNum(o.rank)?o.rank:9999)}
-function satPill(s){const o=s&&s._sat;if(!o)return '';return '<span class="pill '+(o.kind==='保有'?'buy':'hold')+'">サテライト'+(o.kind==='保有'?'保有候補':'監視')+(isNum(o.rank)?' '+o.rank+'位':'')+'</span>'}
+function satKey(s){const o=s._sat;if(!o)return 1e9;return isNum(o.rank)?o.rank:9999}
+function satPill(s){const o=s&&s._sat;if(!o)return '';return '<span class="pill hold">営業利益/EV '+(isNum(o.rank)?o.rank+'位':'')+'</span>'}
 function filtered(){
   const q=qEl.value.trim().toLowerCase().normalize('NFKC');
   let a=D.s.filter(s=>(!q||s._key.includes(q))&&(!flt.num||s._has)&&(!flt.yld||(isNum(s._yld)&&s._yld>=0.03))&&(!flt.up||(isNum(s._opg)&&s._opg>0&&isNum(s._rvg)&&s._rvg>0))&&(!flt.g17||s._g17)&&(!flt.sat||s._sat));
@@ -280,11 +280,11 @@ function barChart(title,rows,vi){
 }
 
 function satBox(s){
-  const o=s._sat; let h='<section><h3>サテライト・成長17分野</h3>';
-  if(OLD_GAS) return h+'<div class="msg err">Apps Script（Code.gs）が古いため、成長17分野とサテライト候補を読み込めていません。新しいCode.gsを貼り替えて「新しいバージョン」でデプロイしてください。</div></section>';
+  const o=s._sat; let h='<section><h3>営業利益/EV・成長17分野</h3>';
+  if(OLD_GAS) return h+'<div class="msg err">Apps Script（Code.gs）が古いため、成長17分野と営業利益/EVの順位を読み込めていません。新しいCode.gsを貼り替えて「新しいバージョン」でデプロイしてください。</div></section>';
   h+=s._g17?'<div class="sub" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+s._g17.split('、').map(f=>'<span class="pill hold">'+esc(f)+'</span>').join('')+'</div>':'<p class="small">成長17分野には該当なし（言葉と業種からの機械的な判定）。</p>';
-  if(o) h+='<div class="tiles num"><div class="tile"><div class="k">区分</div><div class="v">'+esc(o.kind==='保有'?'保有候補':'監視')+'</div></div><div class="tile"><div class="k">順位</div><div class="v">'+(isNum(o.rank)?o.rank+'位':'圏外')+'</div></div><div class="tile"><div class="k">営業利益/EV</div><div class="v">'+pc(o.evop)+'</div></div><div class="tile"><div class="k">ROIC</div><div class="v">'+pc(o.roic)+'</div></div><div class="tile"><div class="k">3年平均FCF/EV</div><div class="v">'+pc(o.fcf)+'</div></div><div class="tile"><div class="k">EV（億円）</div><div class="v">'+fm(o.ev,0)+'</div></div></div>'+(o.since?'<p class="small">保有候補になった日：'+esc(o.since)+'</p>':'');
-  else h+='<p class="small">今のサテライト候補（保有10・監視50）には入っていません。</p>';
+  if(o) h+='<div class="tiles num"><div class="tile"><div class="k">順位（参考）</div><div class="v">'+(isNum(o.rank)?o.rank+'位':'圏外')+'</div></div><div class="tile"><div class="k">営業利益/EV</div><div class="v">'+pc(o.evop)+'</div></div><div class="tile"><div class="k">ROIC</div><div class="v">'+pc(o.roic)+'</div></div><div class="tile"><div class="k">3年平均FCF/EV</div><div class="v">'+pc(o.fcf)+'</div></div><div class="tile"><div class="k">EV（億円）</div><div class="v">'+fm(o.ev,0)+'</div></div></div>';
+  else h+='<p class="small">営業利益/EVの上位100社（17分野・金融除く・FCFとROICで除外後）には入っていません。</p>';
   return h+'<p class="small">'+esc((D.sat&&D.sat.note)||'')+'</p></section>';
 }
 function renderDetail(code){
@@ -457,7 +457,7 @@ async function readWatch(){
   paintWatch();
   if(W.state==='ok') fillAuto();
 }
-// 自動理論株価が空の監視銘柄（サテライト候補など、シート側で足した行）に、アプリの理論株価を書き込む
+// 自動理論株価が空の監視銘柄（シート側で直接足した行）に、アプリの理論株価を書き込む
 let FILLING=false;
 async function fillAuto(){
   if(FILLING||!D) return; FILLING=true;
@@ -523,8 +523,7 @@ function statusLine(){
 }
 function renderWatch(kind){
   kind=kind||'watch'; setTab(kind);
-  const isSat=o=>/^サテライト/.test(String(o.memo||''));
-  const rows=W.rows.filter(o=>kind==='hold'?isHold(o):!isHold(o)).map(view).sort((a,b)=>(isSat(a)-isSat(b))||(isSat(a)?(satKey(BY[a.code]||{})-satKey(BY[b.code]||{})):((isNum(a.dev)?a.dev:9)-(isNum(b.dev)?b.dev:9))));
+  const rows=W.rows.filter(o=>kind==='hold'?isHold(o):!isHold(o)).map(view).sort((a,b)=>(isNum(a.dev)?a.dev:9)-(isNum(b.dev)?b.dev:9));
   const nb=rows.filter(o=>o.judge==='買い検討').length, ns=rows.filter(o=>o.judge==='売り検討').length;
   let h='<div class="wsum"><span class="pill buy">買い検討 '+nb+'</span><span class="pill sell">売り検討 '+ns+'</span><span class="grow small">'+(W.state==='loading'||W.state==='refreshing'?'読み込み中…':W.at?new Date(W.at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+' 時点':'')+'</span><button class="btn ghost" data-act="reload"'+(W.busy?' disabled':'')+'>再読み込み</button></div>';
   h+=statusLine();
