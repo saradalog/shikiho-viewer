@@ -461,9 +461,11 @@ async function api(action,body,params){
   const c=cfg(); if(!c||!c.url||!c.token){const e=new Error('nocfg');e.code='nocfg';throw e}
   let res;
   try{
-    if(body){ res=await fetch(c.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({action,token:c.token},body))}); }
-    else { res=await fetch(c.url+(c.url.includes('?')?'&':'?')+'action='+action+'&token='+encodeURIComponent(c.token)+Object.entries(params||{}).map(([k,v])=>'&'+k+'='+encodeURIComponent(v)).join('')); }
-  }catch(e){const x=new Error('offline');x.code=navigator.onLine===false?'offline':'network';throw x}
+    const ac=new AbortController(); const tm=setTimeout(()=>ac.abort(),action==='data'?150000:60000);
+    if(body){ res=await fetch(c.url,{signal:ac.signal,method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({action,token:c.token},body))}); }
+    else { res=await fetch(c.url+(c.url.includes('?')?'&':'?')+'action='+action+'&token='+encodeURIComponent(c.token)+Object.entries(params||{}).map(([k,v])=>'&'+k+'='+encodeURIComponent(v)).join(''),{signal:ac.signal}); }
+    clearTimeout(tm);
+  }catch(e){const x=new Error('offline');x.code=e&&e.name==='AbortError'?'timeout':navigator.onLine===false?'offline':'network';throw x}
   let j; try{j=await res.json()}catch(e){const x=new Error('bad_response');x.code='bad_response';throw x}
   if(!j.ok){const x=new Error(j.error||'error');x.code=j.error==='unauthorized'?'unauthorized':'api';throw x}
   return j;
@@ -475,6 +477,7 @@ function errText(e){
   if(c==='network') return 'Apps Scriptにつながりませんでした。URLが正しいか、デプロイの「アクセスできるユーザー」が「全員」になっているか確認してください。';
   if(c==='bad_response') return 'Apps Scriptから想定外の応答が返りました。URLが「/exec」で終わるウェブアプリのURLか確認してください。';
   if(c==='unauthorized') return '合言葉が一致しません。「設定」で入れ直してください。';
+  if(c==='timeout') return 'Apps Scriptからの応答が2分以上ありませんでした。Apps Scriptの「実行数」でエラーが出ていないか確認してください。';
   if(c==='old_gas') return 'Apps Script（Code.gs）が古いため、米国株・中国株を読み込めません。新しいCode.gsを貼り替えて「新しいバージョン」でデプロイしてください。';
   return 'スプレッドシート側でエラーになりました：'+((e&&e.message)||'');
 }
@@ -714,6 +717,7 @@ document.addEventListener('click',e=>{const el=e.target.closest('button,.btn,.ch
   el.classList.add('tapped');setTimeout(()=>el.classList.remove('tapped'),250);try{navigator.vibrate&&navigator.vibrate(8)}catch(_){}},true);
 async function boot(){
   try{ SEC=await (await fetch('sectors.json')).json(); }catch(e){ SEC=null; }
+  brand();
   for(const m of ['jp','us','hk']){ try{ const v=await idbGet(IDB[m]); if(v&&v.s&&(v.market||'jp')===m) DS[m]=v; }catch(e){} }
   if(DS[MK]){ prep(); route(); readWatch(); autoRefresh(); if(MK!=='jp'&&!DS.jp&&cfg()) fetchData('jp'); return; }
   if(cfg()){ app.innerHTML='<div class="loading">'+MKN[MK]+'のデータを取得しています…（初回は20〜40秒ほどかかります）</div>'; if(await fetchData()){route();readWatch();if(MK!=='jp'&&!DS.jp) fetchData('jp');return} }
