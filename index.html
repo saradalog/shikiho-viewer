@@ -266,7 +266,7 @@ function prepOne(d,m){
 }
 
 // 営業利益/EV（米国株・中国株）：日本株と同じ式。EV＝時価総額＋有利子負債−現金等、営業利益は直近の通期実績。
-// 金融（セクター Financial Services）を除く・時価総額100億円以上（円換算）。FCF（当期と前期の2年平均）がマイナス、ROIC下位2割は除く。上位100に順位
+// 金融（セクター Financial Services）を除く・時価総額100億円以上（円換算）。FCF（当期と前期の2年平均）がマイナスは除く。上位100に順位
 function evopForeign(d){
   const rows=[];
   for(const s of d.s){
@@ -283,10 +283,9 @@ function evopForeign(d){
     if(!(ev>0)||!(op>0)) continue;
     rows.push({s,evop:op/ev,roic:isNum(ic)&&ic>0?op*0.7/ic:null,fcf:fc.length>=2?fc.reduce((a,b)=>a+b,0)/fc.length/ev:null,ev,op});
   }
-  const ro=rows.filter(r=>isNum(r.roic)).map(r=>r.roic).sort((a,b)=>a-b), cut=ro.length?ro[Math.floor(ro.length*0.2)]:null;
-  const el=rows.filter(r=>!(isNum(r.fcf)&&r.fcf<0)&&!(isNum(r.roic)&&isNum(cut)&&r.roic<=cut)).sort((a,b)=>b.evop-a.evop);
+  const el=rows.filter(r=>!(isNum(r.fcf)&&r.fcf<0)).sort((a,b)=>b.evop-a.evop);   // 2026-11-09：ROIC下位2割の除外はやめた（再検証で効果なし）
   el.forEach((r,i)=>{ if(i<100) r.s._sat={rank:i+1,evop:r.evop,roic:r.roic,fcf:r.fcf,ev:r.ev,op:r.op,fields:''}; });
-  d.sat={note:'営業利益/EVの順位（参考）：金融除く・時価総額100億円以上（円換算）を、営業利益/EVの大きい順に。FCF（当期と前期の平均）マイナスとROIC下位2割は除く。対象 '+el.length+' 社。',rows:[]};
+  d.sat={note:'営業利益/EVの順位（参考）：金融除く・時価総額100億円以上（円換算）を、営業利益/EVの大きい順に。FCF（当期と前期の平均）マイナスは除く（ROICは参考表示）。対象 '+el.length+' 社。',rows:[]};
 }
 function satKey(s){const o=s._sat;if(!o)return 1e9;return isNum(o.rank)?o.rank:9999}
 function satPill(s){const o=s&&s._sat;if(!o)return '';return '<span class="pill hold">営業利益/EV '+(isNum(o.rank)?o.rank+'位':'')+'</span>'}
@@ -334,7 +333,7 @@ function satBox(s){
   if(jp&&OLD_GAS) return h+'<div class="msg err">Apps Script（Code.gs）が古いため、成長17分野と営業利益/EVの順位を読み込めていません。新しいCode.gsを貼り替えて「新しいバージョン」でデプロイしてください。</div></section>';
   if(jp) h+=s._g17?'<div class="sub" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+s._g17.split('、').map(f=>'<span class="pill hold">'+esc(f)+'</span>').join('')+'</div>':'<p class="small">成長17分野には該当なし（言葉と業種からの機械的な判定）。</p>';
   if(o) h+='<div class="tiles num"><div class="tile"><div class="k">順位（参考）</div><div class="v">'+(isNum(o.rank)?o.rank+'位':'圏外')+'</div></div><div class="tile"><div class="k">営業利益/EV</div><div class="v">'+pc(o.evop)+'</div></div><div class="tile"><div class="k">ROIC</div><div class="v">'+pc(o.roic)+'</div></div><div class="tile"><div class="k">3年平均FCF/EV</div><div class="v">'+pc(o.fcf)+'</div></div><div class="tile"><div class="k">'+(jp?'EV（億円）':'EV（百万'+esc(s._fc||'')+'）')+'</div><div class="v">'+fm(o.ev,0)+'</div></div></div>';
-  else h+='<p class="small">営業利益/EVの上位100社（'+(jp?'17分野・':'')+'金融除く・FCFとROICで除外後）には入っていません。</p>';
+  else h+='<p class="small">営業利益/EVの上位100社（'+(jp?'17分野・':'')+'金融除く・FCFマイナスを除外後）には入っていません。</p>';
   const dd=DS[mkOf(s)]; return h+'<p class="small">'+esc((dd&&dd.sat&&dd.sat.note)||'')+'</p></section>';
 }
 function renderDetail(code){
