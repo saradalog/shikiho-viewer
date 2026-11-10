@@ -12,7 +12,7 @@
 | このリポジトリ（公開） | 画面だけ：`index.html`（HTML・CSS・JS 1枚、ビルド不要）、`sw.js`、`manifest.webmanifest`、`icons/`、`sectors.json`（コード→東証17業種、業種内回帰用） |
 | 非公開リポジトリ `saradalog/global-shikiho` | シートを作る・毎日更新する Python（J-Quants・Yahoo Finance・EDINET） |
 | Googleスプレッドシート | 「四季報 2026年4集 2580銘柄 年度比較」（日本株）、米国株・香港株の年度比較、「四季報ビューア 監視銘柄」（監視・保有・投資ストーリー） |
-| Apps Script（`Code.gs`） | シートのデータをアプリに返す・監視リストを保存する。**合言葉（TOKEN）を含むためリポジトリに無い**。直す必要があるときは持ち主に Apps Script エディタからコードを貼ってもらう |
+| Apps Script（`Code.gs`） | シートのデータをアプリに返す・監視リストを保存する。コードは非公開リポジトリ `saradalog/global-shikiho` の `apps_script/shikiho_viewer_Code.gs`（合言葉は `'ここに合言葉'` に伏せてある）。直したら持ち主が Apps Script エディタに貼り、合言葉を入れ直して「新しいバージョン」でデプロイし直す。このリポジトリには置かない |
 
 ## Apps Script との約束（`api()` 関数）
 
@@ -23,7 +23,8 @@
 | `ping` | 接続確認 |
 | `data` | 年度比較シートのデータ（市場ごと）。端末の IndexedDB（`shikiho-viewer` の `kv`、キー `data` / `data-us` / `data-hk`）に保存してオフラインでも見られる |
 | `list` | 監視銘柄・保有銘柄の一覧（保有詳細とストーリー判定も同梱） |
-| `add` / `save` | 監視銘柄の追加・保存（POST、本文はJSON） |
+| `add` / `save` / `remove` | 監視銘柄の追加・保存・削除（POST、本文はJSON） |
+| `saveHold` | 保有詳細の株数・取得単価の保存 |
 
 `Code.gs` が古いと、新しい列（成長17分野・営業利益/EV順位・米国株など）が届かず `old_gas` の案内が出る。
 
