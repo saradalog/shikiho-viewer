@@ -594,30 +594,34 @@ function inputs(s){
   const act=(s.y||[]).filter(r=>r[col('years','区分')]==='実績'&&isNum(r[col('years','EPS（円）')])).map(r=>r[col('years','EPS（円）')]);
   let eps=g('今期予想EPS（円）'), epsSrc='今期予想EPS';
   if(!isNum(eps)&&act.length){eps=act[act.length-1];epsSrc='直近実績EPS'}
-  if(!isNum(bps)||bps<=0||!isNum(eps)) return s._in=null;
   const np=g('今期予想純利益（百万円）');
-  const mcap=(isNum(px)&&isNum(np)&&eps!==0&&np/eps>0)?px*np*1e6/eps:null;
+  const mcList=g('時価総額（百万・株価通貨）');
+  const mcap=isNum(mcList)&&mcList>0?mcList*1e6:
+    (isNum(px)&&isNum(np)&&isNum(eps)&&eps!==0&&np/eps>0?px*np*1e6/eps:null);
   const dps=g('今期配当上限（円）');
   const last=act.length?act[act.length-1]:null;
-  const hist=act.slice(-5).map(e=>e/bps);
+  const hist=isNum(bps)&&bps>0?act.slice(-5).map(e=>e/bps):[];
   let sd=null; if(hist.length>=2){const m=hist.reduce((a,b)=>a+b,0)/hist.length; sd=clip(Math.sqrt(hist.reduce((a,b)=>a+(b-m)*(b-m),0)/hist.length),0,0.3)}
-  return s._in={bps,eps,epsSrc,px,mcap,np,dps,roe:clip(eps/bps,-0.5,0.6),
-    payout:eps>0&&isNum(dps)?clip(dps/eps,0,1):0.3,
-    good:act.length>=3&&act.slice(-3).every(e=>e>0)&&eps>0,
-    g:isNum(last)&&last>0?clip(eps/last-1,-0.5,1):null, sd};
+  const roe=isNum(bps)&&bps>0&&isNum(eps)?clip(eps/bps,-0.5,0.6):null;
+  return s._in={bps:isNum(bps)&&bps>0?bps:null,eps:isNum(eps)?eps:null,epsSrc,px,mcap,np,dps,roe,
+    payout:isNum(eps)&&eps>0&&isNum(dps)?clip(dps/eps,0,1):0.3,
+    good:act.length>=3&&act.slice(-3).every(e=>e>0)&&isNum(eps)&&eps>0,
+    g:isNum(last)&&last>0&&isNum(eps)?clip(eps/last-1,-0.5,1):null, sd};
 }
 function rim(bps,roe0,r,payout){let v=bps,b=bps;for(let t=1;t<=10;t++){const rt=r+(roe0-r)*(10-t+1)/10;v+=(rt-r)*b/Math.pow(1+r,t);b*=1+rt*(1-payout)}return v}
 function theo(s){
   const x=inputs(s); if(!x) return null;
   const mY=yen(s,x.mcap); const r=!isNum(mY)?0.08:mY>=2.5e11?0.06:mY>=3e10?0.08:0.10;
-  const ri=rim(x.bps,x.roe,r,x.payout); if(!(ri>0)) return null;
-  const c2=s._c2, comp=peerModels(s,x,r,ri), v=comp&&comp.value>0?comp.value:ri;
-  const cheapA=isNum(x.px)&&x.px<v, cheapC=isNum(x.px)&&isNum(c2)&&x.px<c2;
+  const ri=isNum(x.bps)&&x.bps>0&&isNum(x.roe)?rim(x.bps,x.roe,r,x.payout):null;
+  const c2=s._c2, comp=peerModels(s,x,r,ri);
+  const v=comp&&comp.value>0?comp.value:(isNum(ri)&&ri>0?ri:null);
+  if(!(isNum(v)&&v>0))return null;
+  const cheapA=isNum(x.px)&&x.px<v;
   const shy=s._shy, SM=SHYM[mkOf(s)], shyHi=isNum(shy)&&isNum(SM)&&shy>=SM;
   const pick=x.good&&cheapA&&shyHi;
   const model=comp?comp.primaryName:'残余利益';
   const verdict=!x.good?'対象外（赤字期あり・参考値）':cheapA?model+'で割安':model+'で割高';
-  return {value:Math.round(v),ri:Math.round(ri),comp,r,c2:isNum(c2)?Math.round(c2):null,verdict,shy,shyHi,pick,...x};
+  return {value:Math.round(v),ri:isNum(ri)?Math.round(ri):null,comp,r,c2:isNum(c2)?Math.round(c2):null,verdict,shy,shyHi,pick,...x};
 }
 // 業種内回帰：データを読み込んだときに1回だけ全銘柄で当てはめる
 function solve(A,y){ // 正規方程式 (A'A)β=A'y をガウスの消去法で解く
@@ -629,7 +633,7 @@ function solve(A,y){ // 正規方程式 (A'A)β=A'y をガウスの消去法で�
 }
 function fitC2(list){
   const rows=[]; for(const s of list){ s._c2=null; const x=inputs(s);
-    if(!x||!isNum(x.px)||!isNum(x.mcap)||x.g==null||x.sd==null) continue;
+    if(!x||!isNum(x.px)||!isNum(x.mcap)||!isNum(x.bps)||x.bps<=0||x.g==null||x.sd==null) continue;
     const sec=SEC&&SEC.c[s.code]!=null?SEC.c[s.code]:'all';
     rows.push({s,sec,X:[1,clip(x.roe,-0.2,0.4),x.g,x.sd,Math.log(x.mcap)],y:Math.log(x.px/x.bps)}); }
   const groups={}; for(const r of rows){(groups[r.sec]=groups[r.sec]||[]).push(r)}
@@ -723,10 +727,10 @@ async function act(label,action,body){
 function watched(code){return W.rows.find(o=>o.code===code)}
 function addWatch(code){const s=BY[code];const t=theo(s); act('監視に追加','add',{code,name:s.name,auto:t?t.value:null});}
 function saveWatch(code){
-  const ov=document.getElementById('w-ovr').value.trim(), mu=document.getElementById('w-mult').value.trim(), hd=document.getElementById('w-hold').checked;
+  const ov=document.getElementById('w-ovr').value.trim(), hd=document.getElementById('w-hold').checked, cur=watched(code);
   const body=document.getElementById('w-memo').value.trim(); const me=hd?('保有'+(body?' '+body:'')):body;
   const t=theo(BY[code]);
-  act('保存','save',{code,ovr:ov===''?null:pn(ov),mult:mu===''?1.2:pn(mu),memo:me,auto:t?t.value:null});
+  act('保存','save',{code,ovr:ov===''?null:pn(ov),mult:cur&&isNum(cur.mult)?cur.mult:1.2,memo:me,auto:t?t.value:null});
 }
 async function addHold(code){
   if(W.busy) return; const s=BY[code]; const t=theo(s); W.busy=true; W.msg={t:'保有に追加中…'}; paintWatch();
@@ -805,10 +809,9 @@ function renderWatch(kind){
   if(!rows.length&&W.state!=='loading') h+='<div class="empty">'+(kind==='hold'?'保有銘柄はまだありません。銘柄を開き「保有に追加」を押すか、監視銘柄で「保有中」にチェックして保存してください。':'監視銘柄はまだありません。上の検索から銘柄を開き「監視に追加」を押してください。')+'</div>';
   h+='<div style="border-top:1px solid var(--rule)">'+rows.map(o=>{
     const pos=(isNum(o.px)&&isNum(o.theo)&&o.theo>0)?Math.max(0,Math.min(100,o.px/o.theo/ (2) *100)):null;
-    const sl=(isNum(o.mult))?Math.min(100,o.mult/2*100):60;
     return '<a class="wrow'+(kindOf(o.code)==='jp'?'':' wide')+'" href="#s-'+esc(o.code)+'"><span class="code">'+esc(o.code)+'</span><span class="nm">'+esc(o.name)+'</span><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span>'+
     '<span class="sub num">'+satPill(BY[o.code])+(BY[o.code]&&BY[o.code]._sat&&isNum(BY[o.code]._sat.evop)?'<span>営業利益/EV <b>'+pc(BY[o.code]._sat.evop)+'</b></span>':'')+(o.judge==='買い検討'&&BY[o.code]&&BY[o.code]._pick?'<span class="pill buy">割安×高還元</span>':'')+(BY[o.code]&&isNum(BY[o.code]._shy)?'<span>還元 <b>'+pc(BY[o.code]._shy)+'</b></span>':'')+'<span>株価 <b>'+fm(o.px,pdC(o.code))+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,pdC(o.code))+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,pdC(o.code))+'</b></span></span>'+
-    (pos!=null?'<span class="bar" aria-hidden="true"><b style="left:0;width:50%;background:var(--buy-soft)"></b><b style="left:'+sl+'%;right:0;background:var(--sell-soft)"></b><i style="left:'+pos+'%"></i></span>':'')+
+    (pos!=null?'<span class="bar" aria-hidden="true"><b style="left:0;width:50%;background:var(--buy-soft)"></b><i style="left:'+pos+'%"></i></span>':'')+
     (kind==='hold'?holdSub(o):'')+
     (memoBody(o)?'<span class="sub">'+esc(memoBody(o))+'</span>':'')+'</a>'}).join('')+'</div>';
   h+='<p class="small">株価は株探（米国株・中国株はGoogleファイナンス）から取得。取れないときは「（終値）」としてJ-Quantsの前営業日終値で判定。判定は銘柄ごとの主モデルとの乖離で「割高・やや割高・妥当」に分類。参考モデルは判定を上書きせず、確信度の確認だけに使う。<a href="'+SHEET_URL+'">スプレッドシートを開く</a></p>';
@@ -971,7 +974,7 @@ function watchBox(code){
   if(W.state==='nocfg'){} 
   else if(!o) h+='<div class="actions"><button class="btn" data-act="add" data-code="'+esc(code)+'"'+(W.busy||W.state==='loading'?' disabled':'')+'>監視に追加</button><button class="btn ghost" data-act="addhold" data-code="'+esc(code)+'"'+(W.busy||W.state==='loading'?' disabled':'')+'>保有に追加</button></div>';
   else h+='<div class="form"><label for="w-ovr">理論株価の上書き（'+(mkOf(s)==='jp'?'円':esc(s._pc))+'、空欄なら自動）<input id="w-ovr" inputmode="decimal" value="'+(isNum(o.ovr)?o.ovr:'')+'" placeholder="'+(t?t.value:'')+'"></label>'+
-    '<label for="w-mult">売り倍率（理論株価の何倍で売り検討）<input id="w-mult" inputmode="decimal" value="'+(isNum(o.mult)?o.mult:1.2)+'"></label>'+
+
     '<label class="wide" for="w-memo">メモ（投資ストーリーなど）<input id="w-memo" value="'+esc(memoBody(o))+'"></label><label class="wide" style="display:flex;flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="w-hold" style="width:22px;height:22px;flex:none;margin:0"'+(isHold(o)?' checked':'')+'>保有中（「保有銘柄」タブに表示）</label></div>'+
     '<div class="actions"><button class="btn" data-act="save" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>保存</button><button class="btn danger" data-act="remove" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>監視から外す</button></div>';
   h+='</div>';
