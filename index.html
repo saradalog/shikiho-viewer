@@ -363,7 +363,7 @@ function renderDetail(code){
   const C=(s.c||[])[0]||[]; const gc=n=>C[col('cmt',n)];
   const dv=(lo,hi)=>!isNum(lo)?'—':(lo===hi||!isNum(hi)?fm(lo,1):fm(lo,1)+'〜'+fm(hi,1));
   let h='<a class="back" href="#hold">← 保有銘柄へ</a>';
-  h+='<div class="dh"><div class="c">'+esc(s.code)+'</div><h2>'+esc(s.name)+'</h2><div class="p num">'+(isNum(s._px)?'<b>'+fm(s._px,pd(s))+'</b>'+cu(s)+'　'+esc(g('株価基準日')||'')+' 時点':'株価は未判読')+'　'+esc((s.y&&s.y[0]&&s.y[0][0])||'')+'</div></div>';
+  h+='<div class="dh"><div class="c">'+esc(s.code)+'</div><h2>'+esc(s.name)+'</h2></div>';
   h+='<div class="tiles num">'+
     '<div class="tile"><div class="k">今期予想PER</div><div class="v">'+(isNum(s._per)?s._per.toFixed(1)+'倍':'—')+'</div></div>'+
     '<div class="tile"><div class="k">PBR</div><div class="v">'+(isNum(s._pbr)?s._pbr.toFixed(2)+'倍':'—')+'</div></div>'+
