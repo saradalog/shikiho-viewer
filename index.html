@@ -286,7 +286,7 @@ function renderSearch(){
   const q=qEl.value.trim().toLowerCase().normalize('NFKC');
   if(!q){location.hash='hold';return}
   const a=D.s.filter(s=>s._key.includes(q)).slice(0,30);
-  app.innerHTML='<div class="meta">検索結果 '+a.length+'件（最大30件）</div>'+(a.length?'<ul class="list'+(MK==='jp'?'':' wide')+'">'+a.map(s=>'<li><a href="#s-'+esc(s.code)+'"><span class="code">'+esc(s.code)+'</span><span class="nm">'+esc(s.name)+'</span><span class="px num">'+(s._has?fm(s._px,pd(s))+cu(s):'—')+'</span><span class="sub num"><span>PER <b>'+(isNum(s._per)?s._per.toFixed(1):'—')+'</b></span><span>PBR <b>'+(isNum(s._pbr)?s._pbr.toFixed(2):'—')+'</b></span></span></a></li>').join('')+'</ul>':'<div class="empty">該当する銘柄がありません。</div>';
+  app.innerHTML='<div class="meta">検索結果 '+a.length+'件（最大30件）</div>'+(a.length?'<ul class="list'+(MK==='jp'?'':' wide')+'">'+a.map(s=>'<li><a href="#s-'+esc(s.code)+'"><span class="code">'+esc(s.code)+'</span><span class="nm">'+esc(s.name)+'</span><span class="px num">'+(s._has?fm(s._px,pd(s))+cu(s):'—')+'</span><span class="sub num"><span>PER <b>'+(isNum(s._per)?s._per.toFixed(1):'—')+'</b></span><span>PBR <b>'+(isNum(s._pbr)?s._pbr.toFixed(2):'—')+'</b></span></span></a></li>').join('')+'</ul>':'<div class="empty">該当する銘柄がありません。</div>');
 }
 
 function renderList(){
