@@ -435,8 +435,8 @@ const MODEL_CONFIG={
   '8316':{primary:'残余利益',refs:['妥当PBR','総還元','業種PER']},
   '8058':{primary:'SOTP',refs:['残余利益','DCF','EVA','総還元','簡易FCFE','業種EV/EBITDA','業種PER','業種PBR']},
   '6432':{primary:'DCF',refs:['簡易FCFE','業種EV/EBITDA','EVA','総還元','業種PER']},
-  '8088':{primary:'DCF',refs:['EVA','簡易FCFE','業種EV/EBITDA','総還元','業種PER','業種PBR']},
-  '7203':{primary:'DCF',refs:['EVA','業種EV/EBITDA','簡易FCFE','総還元','業種PER']},
+  '8088':{primary:'EVA',refs:['簡易FCFE','業種EV/EBITDA','DCF','総還元','業種PER','業種PBR']},
+  '7203':{primary:'業種PER',refs:['EVA','業種EV/EBITDA','簡易FCFE','DCF','総還元']},
   '8473':{primary:'残余利益',refs:['妥当PBR','総還元','業種PER']},
   '4755':{primary:'SOTP',refs:['DCF','EVA','総還元','簡易FCFE','業種EV/EBITDA','業種PER','業種PBR','残余利益']}
 };
@@ -599,9 +599,31 @@ function peerModels(s,x,r,rimV){
   };
   const order=[cfg.primary,...cfg.refs];
   const rows=order.filter((k,i)=>order.indexOf(k)===i&&isNum(vals[k])&&vals[k]>0).map(k=>({name:k,value:vals[k]}));
-  let primaryName=cfg.primary,primaryValue=vals[primaryName],fallback=false;
-  if(!(isNum(primaryValue)&&primaryValue>0)){const alt=rows.find(z=>z.name!==cfg.primary);if(!alt)return null;primaryName=alt.name;primaryValue=alt.value;fallback=true}
-  return {value:primaryValue,primaryName,requestedPrimary:cfg.primary,fallback,rows,peerEV,perMed,pbrMed,fcfYears:fcfs.length,
+  let primaryName=cfg.primary,primaryValue=vals[primaryName],fallback=false,fallbackReason='';
+  if(!(isNum(primaryValue)&&primaryValue>0)){
+    const alt=rows.find(z=>z.name!==cfg.primary);
+    if(!alt)return null;
+    primaryName=alt.name;primaryValue=alt.value;fallback=true;fallbackReason='主モデルを算出できないため';
+  }
+
+  // 品質ゲート：主モデルが参考モデルの中央値から極端に外れる場合だけ、中央値に最も近い参考モデルへ切り替える。
+  // 加重平均はしない。あくまで「1モデル採用」のまま、異常値だけ除外する。
+  const refRows=rows.filter(z=>z.name!==primaryName&&
+    !['総還元','業種内回帰'].includes(z.name));
+  const refMed=refRows.length>=3?median(refRows.map(z=>z.value)):null;
+  const primaryVsRef=isNum(refMed)&&refMed>0?primaryValue/refMed:null;
+  if(!fallback&&isNum(primaryVsRef)&&(primaryVsRef<.40||primaryVsRef>2.50)){
+    const candidates=refRows.filter(z=>z.value>0).sort((a,b)=>Math.abs(Math.log(a.value/refMed))-Math.abs(Math.log(b.value/refMed)));
+    if(candidates.length){
+      const alt=candidates[0];
+      fallback=true;
+      fallbackReason='主モデルが参考モデル中央値から極端に乖離（'+Math.round((primaryVsRef-1)*100)+'%）';
+      primaryName=alt.name;
+      primaryValue=alt.value;
+    }
+  }
+
+  return {value:primaryValue,primaryName,requestedPrimary:cfg.primary,fallback,fallbackReason,refMedian:refMed,primaryVsRef,rows,peerEV,perMed,pbrMed,fcfYears:fcfs.length,
     payoutFV,sustainableShy,payoutPerShare,payoutReq,payoutG,
     fcfeFV,fcfeBase,evaFV,eva0,roic,reverseG,reverseBound,sotp};
 }
@@ -962,7 +984,7 @@ function watchBox(code){
   h+='<div class="big num"><div><span>'+(t&&t.comp?'主モデル理論株価':'自動理論株価')+'</span><b>'+(t?fm(t.value,pd(s))+cu(s):'—')+'</b></div>'+
      (o?'<div><span>採用理論株価</span><b>'+fm(o.theo,pd(s))+cu(s)+'</b></div><div><span>現在株価</span><b>'+fm(o.px,pd(s))+cu(s)+'</b></div><div><span>判定</span><b><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span></b></div>':
        (t&&isNum(s._px)?'<div><span>紙面株価との差</span><b>'+pc(s._px/t.value-1)+'</b></div>':''))+'</div>';
-  if(o&&o.vj) h+='<p class="small" style="margin:0">主モデル：<b>'+esc(o.vj.primaryModel)+'</b> ／ 主モデル乖離 <b>'+pc(o.vj.primaryDev)+'</b> ／ 参考モデル一致 <b>'+o.vj.agree+'/'+o.vj.total+'</b> ／ 確信度 <b>'+esc(o.vj.confidence)+'</b>'+(o.vj.fallback?'（主モデル算出不能のため代替）':'')+'</p>';
+  if(o&&o.vj) h+='<p class="small" style="margin:0">主モデル：<b>'+esc(o.vj.primaryModel)+'</b> ／ 主モデル乖離 <b>'+pc(o.vj.primaryDev)+'</b> ／ 参考モデル一致 <b>'+o.vj.agree+'/'+o.vj.total+'</b> ／ 確信度 <b>'+esc(o.vj.confidence)+'</b>'+(o.vj.fallback?'（代替採用）':'')+'</p>';
   if(t) h+='<p class="small" style="margin:0">'+(t.pick?'<span class="pill buy">割安×高還元</span> ':'')+'株主還元利回り <b class="num">'+pc(t.shy)+'</b>'+(s._shySrc?'（'+s._shySrc+'）':'')+'　黒字続きの銘柄の中央値 '+pc(SHYM[mkOf(s)])+'（'+(t.shyHi?'以上':'未満')+'）</p>';
   if(t) h+='<p class="small" style="margin:0">判定：<b>'+esc(t.verdict)+'</b>　業種内回帰の理論株価 <b class="num">'+(t.c2?fm(t.c2,pd(s))+cu(s):'—')+'</b></p>'+
     (t.comp?'<div class="theo" style="margin-top:8px"><p class="small" style="margin:0"><b>銘柄別モデル</b>：主モデル1つを採用し、その他は参考値</p>'+t.comp.rows.map(z=>'<div class="vrow"><div><span>'+(z.name===t.comp.primaryName?'<span class="pill buy">主</span> ':'参考 ')+esc(z.name)+'</span></div><b>'+fm(z.value,pd(s))+cu(s)+'</b></div>').join('')+(t.comp.sotp?'<p class="small" style="margin:0"><b>SOTP '+esc(t.comp.sotp.asOf)+'：</b>'+esc(t.comp.sotp.note)+'</p><details class="f"><summary>SOTP内訳</summary><div class="num">'+t.comp.sotp.rows.map(z=>'<span>'+esc(z.name)+'：'+(isNum(z.profitBn)?'利益 '+fm(z.profitBn,1)+'億円'+(isNum(z.multiple)?' × '+fm(z.multiple,1)+'倍':'')+' → ':'')+'価値 '+fm(z.valueBn,0)+'億円</span>').join('')+'</div></details>':'')+(t.comp.fcfYears?'<p class="small" style="margin:0">DCFの基準FCFは取得できる直近'+t.comp.fcfYears+'期の平均。割引率8%・永久成長率1%・5年予測。</p>':'')+
@@ -1009,24 +1031,25 @@ function renderModels(){
   setTab('models');
   const map=[
     ['8306 MUFG','残余利益'],['8316 SMFG','残余利益'],['8058 三菱商事','SOTP'],['6432 竹内製作所','DCF'],
-    ['8088 岩谷産業','DCF'],['7203 トヨタ','DCF'],['8473 SBI HD','残余利益'],['4755 楽天グループ','SOTP']
+    ['8088 岩谷産業','EVA'],['7203 トヨタ','業種PER'],['8473 SBI HD','残余利益'],['4755 楽天グループ','SOTP']
   ];
   const models=[
     {name:'SOTP（事業別価値の合計）',simple:'会社を事業ごとに分解し、それぞれに合う評価方法で値段を付けて最後に合計する。',fit:'総合商社・持株会社・複合企業・事業構成が大きく違う会社。',weak:'各事業の利益予想や倍率の置き方で結果が変わる。セグメント開示が粗い会社には不向き。',used:'三菱商事・楽天グループ'},
     {name:'残余利益モデル',simple:'今ある純資産に、将来「資本コストを上回って稼ぐ利益」を足して株価を出す。',fit:'銀行・保険・金融など、純資産とROEが企業価値に直結しやすい業種。',weak:'BPSやROEが価値を表しにくい無形資産型企業には弱い。',used:'MUFG・SMFG・SBI HD'},
-    {name:'DCF',simple:'将来生むフリーキャッシュフローを現在価値に割り引いて企業価値を出す。',fit:'製造業・機械・自動車・ガス・インフラなど、キャッシュフローを比較的予測しやすい非金融企業。',weak:'成長率・割引率・永久成長率に敏感。赤字企業やCFが激しく振れる会社では不安定。',used:'竹内製作所・岩谷産業・トヨタ'},
-    {name:'EVA',simple:'本業の利益から「投下した資本に必要なコスト」を引き、本当に価値を増やした分を評価する。',fit:'製造業・素材・化学・商社など、投下資本とROICが重要な会社。',weak:'投下資本やWACCの推定に誤差がある。金融業には基本的に使わない。',used:'参考モデル'},
+    {name:'DCF',simple:'将来生むフリーキャッシュフローを現在価値に割り引いて企業価値を出す。',fit:'機械・製造業・インフラなど、キャッシュフローを比較的予測しやすい非金融企業。',weak:'投資CFや運転資本でFCFが大きく振れる年は理論株価が極端になる。金融子会社を大きく持つ企業にも不向き。',used:'竹内製作所'},
+    {name:'EVA',simple:'本業の利益から「投下した資本に必要なコスト」を引き、本当に価値を増やした分を評価する。',fit:'産業ガス・製造業・素材・化学など、投下資本とROICが重要な会社。',weak:'投下資本やWACCの推定に誤差がある。金融業には基本的に使わない。',used:'岩谷産業の主モデル・その他は参考'},
     {name:'簡易FCFE',simple:'株主に最終的に残る現金をもとに株価を出す。今のアプリでは営業CF−設備投資で近似する。',fit:'借入構造が安定した非金融企業、製造業・インフラなど。',weak:'純借入を直接反映していない簡易版なので、借入変動が大きい会社では参考程度。',used:'参考モデル'},
     {name:'総還元モデル',simple:'配当と自社株買いを「株主に返したお金」としてまとめ、その持続可能額から株価を逆算する。',fit:'成熟企業・銀行・商社・大型株など、配当と自社株買いが継続的な会社。',weak:'一時的な大型自社株買いを永久に続く前提にすると過大評価になるため、自社株買い部分は上限を置く。',used:'参考モデル'},
     {name:'EV/EBITDA',simple:'会社全体の値段が、本業のキャッシュ利益の何年分かを同業他社と比較する。',fit:'設備産業・製造業・通信・資源など、減価償却が大きい非金融企業。',weak:'設備投資額や成長性の違いを直接反映しない。銀行には不向き。',used:'参考モデル'},
-    {name:'PER',simple:'1株利益の何年分まで株価として払われているかを同業他社と比べる。',fit:'利益が安定し、同業比較がしやすい幅広い企業。',weak:'赤字企業では使えず、一時利益・景気循環でEPSが振れる会社では誤解しやすい。',used:'参考モデル'},
+    {name:'PER',simple:'1株利益の何年分まで株価として払われているかを同業他社と比べる。',fit:'自動車など、金融子会社の影響で連結FCFが歪みやすい一方、同業比較がしやすい企業にも向く。',weak:'赤字企業では使えず、一時利益・景気循環でEPSが振れる会社では誤解しやすい。',used:'トヨタの主モデル（業種PER）・その他は参考'},
     {name:'PBR・妥当PBR',simple:'純資産に対して何倍の株価が妥当かを見る。妥当PBRはROEと資本コストから計算する。',fit:'銀行・保険・金融・資産保有型企業。',weak:'ブランドやソフトウェアなど簿価に出ない資産が大きい企業には弱い。',used:'金融株の参考モデル'},
     {name:'業種内回帰',simple:'同じ業種の株価がROE・成長率・企業規模などをどう評価しているかを統計的に当てはめる。',fit:'同業企業が十分多く、比較可能性が高い業種。',weak:'業界全体が割高・割安でも、その市場価格を基準にしてしまう。',used:'参考・異常値チェック'},
     {name:'Reverse DCF',simple:'「今の株価になるには、将来FCFが毎年何%伸びる必要があるか」を逆算する。',fit:'ほぼ全ての非金融企業。特に高成長株や割高に見える株の期待値チェック。',weak:'理論株価そのものではない。必要成長率が現実的かを判断するための補助指標。',used:'期待値チェック'}
   ];
   let h='<section><h3>理論株価モデル</h3><div class="theo"><p style="margin:0">このアプリは、複数モデルを平均せず、<b>銘柄ごとに一番適した主モデルを1つ採用</b>します。その他のモデルは参考値と確信度の確認に使います。</p><div class="model-map">'+map.map(x=>'<div class="story-card"><div class="k">'+esc(x[0])+'</div><div class="v"><b>'+esc(x[1])+'</b></div></div>').join('')+'</div></div></section>';
   h+='<section><h3>モデルの意味と向いている業種</h3><div class="model-guide">'+models.map(m=>'<div class="model-card"><h4>'+esc(m.name)+'</h4><p>'+esc(m.simple)+'</p><p class="fit">向いている：'+esc(m.fit)+'</p><p class="weak">注意点：'+esc(m.weak)+'</p><div class="model-used"><span class="pill hold">'+esc(m.used)+'</span></div></div>').join('')+'</div></section>';
-  h+='<p class="small">判定基準：主モデル理論株価より現在株価が30%超高ければ「割高」、15%超なら「やや割高」、それ以下は「妥当」。参考モデルは判定を変更せず、確信度だけに使います。</p>';
+  h+='<p class="small">判定基準：主モデル理論株価より現在株価が30%超高ければ「割高」、15%超なら「やや割高」、それ以下は「妥当」。参考モデルは判定を変更せず、確信度だけに使います。</p>'+
+    '<p class="small">品質ゲート：主モデルが参考モデル（総還元を除く）の中央値から60%以上下、または150%以上上に外れた場合だけ異常値とみなし、参考中央値に最も近い1モデルへ代替します。平均は取りません。</p>';
   app.innerHTML=h; window.scrollTo(0,0);
 }
 
