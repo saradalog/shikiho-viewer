@@ -687,6 +687,7 @@ let W={state:'init',rows:[],err:null,at:null,busy:false,msg:null};
 const cached=store.get('shk-watch',null); if(cached){W.rows=cached.rows||[];W.at=cached.at;}
 // 保有詳細（株数・取得単価・投資ストーリー）とストーリー判定。Apps Script の list に同梱されて届く
 let HD=(cached&&cached.hold)||{holds:[],judges:[]};
+let OFV=(cached&&cached.ownfv)||{};
 function cfg(){return store.get('shk-cfg',null)}
 async function api(action,body,params){
   const c=cfg(); if(!c||!c.url||!c.token){const e=new Error('nocfg');e.code='nocfg';throw e}
@@ -712,8 +713,14 @@ function errText(e){
   if(c==='old_gas') return 'Apps Script（Code.gs）が古いため、米国株・中国株を読み込めません。新しいCode.gsを貼り替えて「新しいバージョン」でデプロイしてください。';
   return 'スプレッドシート側でエラーになりました：'+((e&&e.message)||'');
 }
-function applyRows(j){W.rows=j.rows||[];W.at=Date.parse(j.at)||Date.now();if(j.hold)HD=j.hold;store.set('shk-watch',{rows:W.rows,at:W.at,hold:HD});}
+function applyRows(j){
+  W.rows=j.rows||[]; W.at=Date.parse(j.at)||Date.now();
+  if(j.hold)HD=j.hold;
+  if(j.ownfv)OFV=j.ownfv;
+  store.set('shk-watch',{rows:W.rows,at:W.at,hold:HD,ownfv:OFV});
+}
 const holdOf=code=>(HD.holds||[]).find(h=>h.code===code);
+const ownFairOf=code=>(OFV||{})[String(code||'').toUpperCase()]||null;
 const judgesOf=code=>(HD.judges||[]).filter(j=>(j.codes||[]).includes(code));
 const VERD_RANK={'崩壊トリガー':3,'要注意':2,'確認事項':1,'ノイズ':0};
 function verdCls(v){return /崩壊/.test(v||'')?'sell':/要注意/.test(v||'')?'warn':/確認/.test(v||'')?'hold':'hold'}
@@ -784,31 +791,34 @@ const memoBody=o=>String(o.memo||'').replace(/^保有\s*/,'');
 // 複数モデルの多数決＋乖離幅で売り側の評価を3段階にする。
 // 各モデルで現在株価が理論値より15%以上高ければ「割高票」、±15%以内は中立。
 // 最終判定は票数と乖離中央値を併用し、単一モデルだけで売り判定しない。
-function valuationJudge(s,px,adoptedTheo){
+function valuationJudge(s,px,adoptedTheo,adoptedModel){
   const t=s?safeTheo(s):null,base=isNum(adoptedTheo)&&adoptedTheo>0?adoptedTheo:(t&&t.value);
-  if(!t||!isNum(px)||px<=0||!isNum(base)||base<=0)return null;
+  if(!isNum(px)||px<=0||!isNum(base)||base<=0)return null;
   const primaryDev=px/base-1;
   let label='妥当'; if(primaryDev>.30)label='割高'; else if(primaryDev>.15)label='やや割高';
   const refs=[];
-  if(t.comp&&Array.isArray(t.comp.rows))t.comp.rows.filter(z=>z.name!==t.comp.primaryName).forEach(z=>{if(isNum(z.value)&&z.value>0)refs.push({name:z.name,value:z.value,dev:px/z.value-1})});
-  if(isNum(t.c2)&&t.c2>0)refs.push({name:'業種内回帰',value:t.c2,dev:px/t.c2-1});
+  if(t&&t.comp&&Array.isArray(t.comp.rows))t.comp.rows.filter(z=>z.name!==t.comp.primaryName).forEach(z=>{if(isNum(z.value)&&z.value>0)refs.push({name:z.name,value:z.value,dev:px/z.value-1})});
+  if(t&&isNum(t.c2)&&t.c2>0)refs.push({name:'業種内回帰',value:t.c2,dev:px/t.c2-1});
   const over=primaryDev>.15,agree=refs.filter(z=>over?z.dev>.15:z.dev<=.15).length,ratio=refs.length?agree/refs.length:null;
   let confidence=refs.length?(ratio>=.67?'高':ratio>=.40?'中':'低'):'参考不足';
-  if(t.comp&&t.comp.fallback)confidence='低';
-  const manual=isNum(adoptedTheo)&&Math.abs(adoptedTheo-t.value)>.0001;
-  return {label,primaryModel:manual?'手動上書き':(t.comp?t.comp.primaryName:'残余利益'),primaryDev,refs,agree,total:refs.length,confidence:manual?'手動':confidence,fallback:!!(t.comp&&t.comp.fallback)};
+  if(t&&t.comp&&t.comp.fallback)confidence='低';
+  return {label,primaryModel:adoptedModel||(t&&t.comp?t.comp.primaryName:'残余利益'),primaryDev,refs,agree,total:refs.length,confidence,fallback:!!(t&&t.comp&&t.comp.fallback)};
 }
 
 // 株価が監視シートで取れていないときは、四季報データ（J-Quantsの前営業日終値）で補って判定する
 function view(o){
   const s=BY[o.code]; let px=o.px, pxSrc='';
   if(!isNum(px)&&s&&isNum(s._px)){px=s._px;pxSrc='終値'}
-  const live=s?safeTheo(s):null;
-  const theo=isNum(o.ovr)?o.ovr:(live&&isNum(live.value)?live.value:o.theo);
+  const live=s?safeTheo(s):null, ownfv=ownFairOf(o.code);
+  let theo=null,theoModel='',theoSource='';
+  if(isNum(o.ovr)){theo=o.ovr;theoModel='手動上書き';theoSource='manual'}
+  else if(ownfv&&isNum(ownfv.base)){theo=ownfv.base;theoModel='独自予想・'+(ownfv.model||'理論株価');theoSource='own'}
+  else if(live&&isNum(live.value)){theo=live.value;theoModel=live.comp?live.comp.primaryName:'残余利益';theoSource='market'}
+  else if(isNum(o.theo)){theo=o.theo;theoModel='保存値';theoSource='saved'}
   const dev=isNum(px)&&isNum(theo)&&theo>0?px/theo-1:null;
-  const vj=isNum(px)&&s?valuationJudge(s,px,theo):null;
+  const vj=isNum(px)&&isNum(theo)?valuationJudge(s,px,theo,theoModel):null;
   const judge=!isNum(px)?'株価なし':vj?vj.label:!isNum(theo)?'理論株価なし':'妥当';
-  return Object.assign({},o,{theo,px,pxSrc,dev,judge,vj});
+  return Object.assign({},o,{theo,px,pxSrc,dev,judge,vj,ownfv,theoModel,theoSource,marketTheo:live&&live.value,marketModel:live&&live.comp?live.comp.primaryName:null});
 }
 function paintWatch(){
   const nh=W.rows.filter(isHold).length, nw=W.rows.length-nh;
@@ -981,10 +991,23 @@ function saveHold(code){
 function watchBox(code){
   const s=BY[code]; const t=safeTheo(s); const o0=watched(code); const o=o0?view(o0):null;
   let h='<div class="theo">';
-  h+='<div class="big num"><div><span>'+(t&&t.comp?'主モデル理論株価':'自動理論株価')+'</span><b>'+(t?fm(t.value,pd(s))+cu(s):'—')+'</b></div>'+
-     (o?'<div><span>採用理論株価</span><b>'+fm(o.theo,pd(s))+cu(s)+'</b></div><div><span>現在株価</span><b>'+fm(o.px,pd(s))+cu(s)+'</b></div><div><span>判定</span><b><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span></b></div>':
-       (t&&isNum(s._px)?'<div><span>紙面株価との差</span><b>'+pc(s._px/t.value-1)+'</b></div>':''))+'</div>';
-  if(o&&o.vj) h+='<p class="small" style="margin:0">主モデル：<b>'+esc(o.vj.primaryModel)+'</b> ／ 主モデル乖離 <b>'+pc(o.vj.primaryDev)+'</b> ／ 参考モデル一致 <b>'+o.vj.agree+'/'+o.vj.total+'</b> ／ 確信度 <b>'+esc(o.vj.confidence)+'</b>'+(o.vj.fallback?'（代替採用）':'')+'</p>';
+  if(o){
+    const own=o.ownfv;
+    h+='<div class="big num"><div><span>'+(own&&isNum(own.base)?'独自予想理論株価（Base）':'採用理論株価')+'</span><b>'+fm(o.theo,pd(s))+cu(s)+'</b></div>'+
+      '<div><span>現在株価</span><b>'+fm(o.px,pd(s))+cu(s)+'</b></div>'+
+      '<div><span>判定</span><b><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span></b></div></div>';
+    if(own&&isNum(own.base)){
+      h+='<p class="small" style="margin:0"><b>銘柄分析の独自予想</b>：Bear '+(isNum(own.bear)?fm(own.bear,pd(s))+cu(s):'—')+
+        ' ／ Base '+fm(own.base,pd(s))+cu(s)+' ／ Bull '+(isNum(own.bull)?fm(own.bull,pd(s))+cu(s):'—')+
+        '　対象 '+esc(own.fy||'')+'　計算 '+esc(own.asOf||'')+'　'+esc(own.model||'')+'</p>'+
+        '<p class="small" style="margin:0">独自予想理論株価は <b>analysis側で計算済みの完成値</b>。この四季報アプリでは再計算していません。</p>';
+    }
+    if(isNum(o.marketTheo)) h+='<p class="small" style="margin:0">参考：四季報データ主モデル '+esc(o.marketModel||'')+' <b>'+fm(o.marketTheo,pd(s))+cu(s)+'</b></p>';
+    if(o.vj) h+='<p class="small" style="margin:0">採用モデル：<b>'+esc(o.vj.primaryModel)+'</b> ／ 乖離 <b>'+pc(o.vj.primaryDev)+'</b> ／ 参考モデル一致 <b>'+o.vj.agree+'/'+o.vj.total+'</b> ／ 確信度 <b>'+esc(o.vj.confidence)+'</b></p>';
+  }else{
+    h+='<div class="big num"><div><span>'+(t&&t.comp?'主モデル理論株価':'自動理論株価')+'</span><b>'+(t?fm(t.value,pd(s))+cu(s):'—')+'</b></div>'+
+      (t&&isNum(s._px)?'<div><span>紙面株価との差</span><b>'+pc(s._px/t.value-1)+'</b></div>':'')+'</div>';
+  }
   if(t) h+='<p class="small" style="margin:0">'+(t.pick?'<span class="pill buy">割安×高還元</span> ':'')+'株主還元利回り <b class="num">'+pc(t.shy)+'</b>'+(s._shySrc?'（'+s._shySrc+'）':'')+'　黒字続きの銘柄の中央値 '+pc(SHYM[mkOf(s)])+'（'+(t.shyHi?'以上':'未満')+'）</p>';
   if(t) h+='<p class="small" style="margin:0">判定：<b>'+esc(t.verdict)+'</b>　業種内回帰の理論株価 <b class="num">'+(t.c2?fm(t.c2,pd(s))+cu(s):'—')+'</b></p>'+
     (t.comp?'<div class="theo" style="margin-top:8px"><p class="small" style="margin:0"><b>銘柄別モデル</b>：主モデル1つを採用し、その他は参考値</p>'+t.comp.rows.map(z=>'<div class="vrow"><div><span>'+(z.name===t.comp.primaryName?'<span class="pill buy">主</span> ':'参考 ')+esc(z.name)+'</span></div><b>'+fm(z.value,pd(s))+cu(s)+'</b></div>').join('')+(t.comp.sotp?'<p class="small" style="margin:0"><b>SOTP '+esc(t.comp.sotp.asOf)+'：</b>'+esc(t.comp.sotp.note)+'</p><details class="f"><summary>SOTP内訳</summary><div class="num">'+t.comp.sotp.rows.map(z=>'<span>'+esc(z.name)+'：'+(isNum(z.profitBn)?'利益 '+fm(z.profitBn,1)+'億円'+(isNum(z.multiple)?' × '+fm(z.multiple,1)+'倍':'')+' → ':'')+'価値 '+fm(z.valueBn,0)+'億円</span>').join('')+'</div></details>':'')+(t.comp.fcfYears?'<p class="small" style="margin:0">DCFの基準FCFは取得できる直近'+t.comp.fcfYears+'期の平均。割引率8%・永久成長率1%・5年予測。</p>':'')+
@@ -1046,7 +1069,7 @@ function renderModels(){
     {name:'業種内回帰',simple:'同じ業種の株価がROE・成長率・企業規模などをどう評価しているかを統計的に当てはめる。',fit:'同業企業が十分多く、比較可能性が高い業種。',weak:'業界全体が割高・割安でも、その市場価格を基準にしてしまう。',used:'参考・異常値チェック'},
     {name:'Reverse DCF',simple:'「今の株価になるには、将来FCFが毎年何%伸びる必要があるか」を逆算する。',fit:'ほぼ全ての非金融企業。特に高成長株や割高に見える株の期待値チェック。',weak:'理論株価そのものではない。必要成長率が現実的かを判断するための補助指標。',used:'期待値チェック'}
   ];
-  let h='<section><h3>理論株価モデル</h3><div class="theo"><p style="margin:0">このアプリは、複数モデルを平均せず、<b>銘柄ごとに一番適した主モデルを1つ採用</b>します。その他のモデルは参考値と確信度の確認に使います。</p><div class="model-map">'+map.map(x=>'<div class="story-card"><div class="k">'+esc(x[0])+'</div><div class="v"><b>'+esc(x[1])+'</b></div></div>').join('')+'</div></div></section>';
+  let h='<section><h3>理論株価モデル</h3><div class="theo"><p style="margin:0">独自予想がある銘柄は、<b>銘柄分析（analysis）側で計算済みの独自予想理論株価を最優先</b>します。四季報アプリでは独自予想を再計算しません。独自予想が無い銘柄だけ、下記の四季報データ主モデルを使います。</p><div class="model-map">'+map.map(x=>'<div class="story-card"><div class="k">'+esc(x[0])+'</div><div class="v"><b>'+esc(x[1])+'</b></div></div>').join('')+'</div></div></section>';
   h+='<section><h3>モデルの意味と向いている業種</h3><div class="model-guide">'+models.map(m=>'<div class="model-card"><h4>'+esc(m.name)+'</h4><p>'+esc(m.simple)+'</p><p class="fit">向いている：'+esc(m.fit)+'</p><p class="weak">注意点：'+esc(m.weak)+'</p><div class="model-used"><span class="pill hold">'+esc(m.used)+'</span></div></div>').join('')+'</div></section>';
   h+='<p class="small">判定基準：主モデル理論株価より現在株価が30%超高ければ「割高」、15%超なら「やや割高」、それ以下は「妥当」。参考モデルは判定を変更せず、確信度だけに使います。</p>'+
     '<p class="small">品質ゲート：主モデルが参考モデル（総還元を除く）の中央値から60%以上下、または150%以上上に外れた場合だけ異常値とみなし、参考中央値に最も近い1モデルへ代替します。平均は取りません。</p>';
