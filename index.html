@@ -421,15 +421,15 @@ const clip=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));
 
 // 保有8銘柄は、四季報ビューアで取得できる既存データから銘柄別に評価モデルを組み合わせる。
 // 算出不能なモデルは除外し、残った重みを100%へ再配分する。
-const COMPOSITE_WEIGHTS={
-  '8306':{'残余利益':.60,'妥当PBR':.30,'業種PER':.10,'総還元':.10},
-  '8316':{'残余利益':.60,'妥当PBR':.30,'業種PER':.10,'総還元':.10},
-  '8058':{'残余利益':.25,'DCF':.30,'業種EV/EBITDA':.20,'業種PER':.15,'業種PBR':.10,'総還元':.10,'簡易FCFE':.08,'EVA':.08},
-  '6432':{'DCF':.60,'業種EV/EBITDA':.25,'業種PER':.15,'総還元':.10,'簡易FCFE':.08,'EVA':.08},
-  '8088':{'DCF':.45,'業種EV/EBITDA':.35,'業種PER':.10,'業種PBR':.10,'総還元':.10,'簡易FCFE':.08,'EVA':.08},
-  '7203':{'DCF':.50,'業種EV/EBITDA':.30,'業種PER':.20,'総還元':.10,'簡易FCFE':.08,'EVA':.08},
-  '8473':{'残余利益':.50,'妥当PBR':.35,'業種PER':.15,'総還元':.10},
-  '4755':{'残余利益':.20,'DCF':.15,'業種EV/EBITDA':.35,'業種PER':.15,'業種PBR':.15,'総還元':.10,'簡易FCFE':.08,'EVA':.08}
+const MODEL_CONFIG={
+  '8306':{primary:'残余利益',refs:['妥当PBR','総還元','業種PER']},
+  '8316':{primary:'残余利益',refs:['妥当PBR','総還元','業種PER']},
+  '8058':{primary:'SOTP',refs:['残余利益','DCF','EVA','総還元','簡易FCFE','業種EV/EBITDA','業種PER','業種PBR']},
+  '6432':{primary:'DCF',refs:['簡易FCFE','業種EV/EBITDA','EVA','総還元','業種PER']},
+  '8088':{primary:'DCF',refs:['EVA','簡易FCFE','業種EV/EBITDA','総還元','業種PER','業種PBR']},
+  '7203':{primary:'DCF',refs:['EVA','業種EV/EBITDA','簡易FCFE','総還元','業種PER']},
+  '8473':{primary:'残余利益',refs:['妥当PBR','総還元','業種PER']},
+  '4755':{primary:'SOTP',refs:['DCF','EVA','総還元','簡易FCFE','業種EV/EBITDA','業種PER','業種PBR','残余利益']}
 };
 function median(a){const x=a.filter(isNum).sort((p,q)=>p-q);if(!x.length)return null;const n=x.length;return n%2?x[(n-1)/2]:(x[n/2-1]+x[n/2])/2}
 function secOf(s){return SEC&&SEC.c[s.code]!=null?SEC.c[s.code]:null}
@@ -437,9 +437,71 @@ function actualOp(s){const Y=n=>col('years',n),a=(s.y||[]).filter(r=>r[Y('区分
 function salesGrowth(s){const Y=n=>col('years',n),a=(s.y||[]).filter(r=>r[Y('区分')]==='実績'&&isNum(r[Y('売上高（百万円）')])).map(r=>r[Y('売上高（百万円）')]);if(a.length<2||!(a[0]>0))return 0;const n=Math.min(5,a.length-1),x=a[a.length-1-n],y=a[a.length-1];return x>0&&y>0?clip(Math.pow(y/x,1/n)-1,0,.15):0}
 const FIN_CODES=new Set(['8306','8316','8473']);
 function isFinancialCode(code){return FIN_CODES.has(String(code||''))}
+function sectorPerMedian(ids){
+  const a=(DS.jp&&DS.jp.s||[]).filter(p=>ids.includes(secOf(p))).map(p=>p._per).filter(v=>isNum(v)&&v>=4&&v<=40);
+  return median(a);
+}
+function marketPerMedian(){
+  return median((DS.jp&&DS.jp.s||[]).map(p=>p._per).filter(v=>isNum(v)&&v>=4&&v<=40));
+}
+
+// 三菱商事SOTP。2026-11-04会社予想（純利益1.2兆円）をセグメント別に、対応する東証17業種の予想PER中央値で評価。
+// Other 1590億円のうち会社が明示した資本回収・一過性1200億円はPERを掛けず1倍で加算し、残り390億円だけ市場PERで評価する。
+const MC_SOTP_20261104={
+  asOf:'2026-11-04',totalBn:1200,oneTimeOtherBn:120,
+  segments:[
+    {name:'Energy & Power Solution',profitBn:383,sectors:[1,10]},
+    {name:'Materials Solution',profitBn:43,sectors:[3,6]},
+    {name:'Mineral Resources',profitBn:230,sectors:[1,6]},
+    {name:'Urban Development & Infrastructure',profitBn:90,sectors:[2,16]},
+    {name:'Mobility',profitBn:100,sectors:[5]},
+    {name:'Food Industry',profitBn:65,sectors:[0]},
+    {name:'Smart-Life Creation',profitBn:130,sectors:[9,13,15]}
+  ],
+  otherBn:159
+};
+function sotp8058(x){
+  const shares=isNum(x.mcap)&&isNum(x.px)&&x.px>0?x.mcap/x.px:null;
+  if(!shares)return null;
+  const scale=isNum(x.np)&&x.np>0?x.np/1200000:1;
+  const rows=[];let equityBn=0;
+  for(const z of MC_SOTP_20261104.segments){
+    const per=sectorPerMedian(z.sectors),profit=z.profitBn*scale;
+    if(!isNum(per))continue;
+    const valueBn=profit*per; equityBn+=valueBn;
+    rows.push({name:z.name,profitBn:profit,multiple:per,valueBn});
+  }
+  const recurringOther=(MC_SOTP_20261104.otherBn-MC_SOTP_20261104.oneTimeOtherBn)*scale;
+  const oneTime=MC_SOTP_20261104.oneTimeOtherBn*scale;
+  const marketPer=marketPerMedian();
+  if(isNum(marketPer)){const valueBn=recurringOther*marketPer;equityBn+=valueBn;rows.push({name:'Other（継続分）',profitBn:recurringOther,multiple:marketPer,valueBn})}
+  equityBn+=oneTime; rows.push({name:'資本回収・一過性',profitBn:oneTime,multiple:1,valueBn:oneTime});
+  return equityBn>0?{value:equityBn*1e9/shares,rows,asOf:MC_SOTP_20261104.asOf,note:'会社予想セグメント純利益×対応業種PER中央値。一過性利益は1倍。'}:null;
+}
+
+// 楽天SOTP。FinTech再編後の楽天銀行持分は、A種種類株式を普通株へ転換した場合の経済持分72.35%で時価評価。
+// Internetは2026年H1 Non-GAAP営業利益を年率換算・税引後70%として情報通信・サービスPER中央値で評価。
+// MobileはEBITDA黒字化済みでもNon-GAAP営業赤字のため主SOTPでは0評価。非FinTech純有利子負債は会社開示6.5倍×H1 EBITDA年率換算で近似。
+const RAKUTEN_SOTP_20260810={asOf:'2026-08-10',bankEconomicStake:.7235,internetOiH1Bn:44.3,nonFintechEbitdaH1Bn:60.7,netDebtEbitda:6.5};
+function sotp4755(x){
+  const shares=isNum(x.mcap)&&isNum(x.px)&&x.px>0?x.mcap/x.px:null;
+  if(!shares)return null;
+  const rows=[];let equityBn=0;
+  const bank=BY['5838'],bi=bank?inputs(bank):null;
+  if(bi&&isNum(bi.mcap)&&bi.mcap>0){
+    const valueBn=bi.mcap/1e9*RAKUTEN_SOTP_20260810.bankEconomicStake;
+    equityBn+=valueBn;rows.push({name:'FinTech（楽天銀行持分）',valueBn,multiple:null});
+  }
+  const per=sectorPerMedian([9]),internetNi=RAKUTEN_SOTP_20260810.internetOiH1Bn*2*.70;
+  if(isNum(per)){const valueBn=internetNi*per;equityBn+=valueBn;rows.push({name:'Internet Services',profitBn:internetNi,multiple:per,valueBn})}
+  rows.push({name:'Mobile（営業赤字のため保守的に0）',valueBn:0,multiple:null});
+  const netDebtBn=RAKUTEN_SOTP_20260810.nonFintechEbitdaH1Bn*2*RAKUTEN_SOTP_20260810.netDebtEbitda;
+  equityBn-=netDebtBn;rows.push({name:'非FinTech純有利子負債（控除）',valueBn:-netDebtBn,multiple:null});
+  return equityBn>0?{value:equityBn*1e9/shares,rows,asOf:RAKUTEN_SOTP_20260810.asOf,note:'楽天銀行経済持分＋Internet価値－非FinTech純有利子負債。Mobileは0評価。'}:null;
+}
 
 function peerModels(s,x,r,rimV){
-  const w=COMPOSITE_WEIGHTS[s.code];if(!w||mkOf(s)!=='jp')return null;
+  const cfg=MODEL_CONFIG[s.code];if(!cfg||mkOf(s)!=='jp')return null;
   const F=(s.f||[])[0]||[],gf=n=>F[col('fin',n)],sec=secOf(s);
   const peers=(DS.jp&&DS.jp.s||[]).filter(p=>p.code!==s.code&&(sec==null||secOf(p)===sec));
   const perMed=median(peers.map(p=>p._per).filter(v=>isNum(v)&&v>0&&v<100));
@@ -448,7 +510,6 @@ function peerModels(s,x,r,rimV){
   const ibd=gf('有利子負債'),cash=gf('現金等 当期'),dep=gf('減価償却 実績'),op=actualOp(s);
   const netDebt=(isNum(ibd)?ibd:0)-(isNum(cash)?cash:0);
   const eb=isNum(op)&&isNum(dep)?op+dep:null;
-  const evM=isNum(x.mcap)?x.mcap/1e6+netDebt:null;
   const peerEV=median(peers.map(p=>{
     const pi=inputs(p),PF=(p.f||[])[0]||[],pg=n=>PF[col('fin',n)],pop=actualOp(p),pdep=pg('減価償却 実績');
     if(!pi||!isNum(pi.mcap)||!isNum(pop)||!isNum(pdep)||pop+pdep<=0)return null;
@@ -465,8 +526,6 @@ function peerModels(s,x,r,rimV){
   }
   const evm=isNum(peerEV)&&isNum(eb)&&shares?(peerEV*eb-netDebt)*1e6/shares:null;
 
-  // 総還元モデル：配当＋自社株買いを1株あたり総還元額に直し、要求収益率8%・長期成長1%で資本還元。
-  // 単年の大型買い戻しを永久化しないため、自社株買い部分は年5%を上限にする。
   const divYield=isNum(s._yld)&&s._yld>=0?s._yld:0;
   const buybackYield=isNum(s._shy)?Math.max(0,s._shy-divYield):null;
   const sustainableShy=isNum(s._shy)?clip(divYield+Math.min(buybackYield,.05),0,.12):null;
@@ -474,7 +533,6 @@ function peerModels(s,x,r,rimV){
   const payoutReq=.08,payoutG=.01;
   const payoutFV=isNum(payoutPerShare)&&payoutPerShare>0?payoutPerShare/(payoutReq-payoutG):null;
 
-  // 簡易FCFE：営業CF－設備投資。純借入を取得できないため除外していることを明示する。
   const cfo=gf('営業CF 当期'),capex=gf('設備投資 実績');
   const fcfeBase=!isFinancialCode(s.code)&&isNum(cfo)&&isNum(capex)?cfo-capex:null;
   let fcfeFV=null;
@@ -485,44 +543,29 @@ function peerModels(s,x,r,rimV){
     if(pv>0)fcfeFV=pv*1e6/shares;
   }
 
-  // EVA：NOPAT－WACC×投下資本。超過利益は10年でゼロへ収束すると仮定。
   const eq=gf('自己資本');
   const invested=!isFinancialCode(s.code)&&isNum(eq)?eq+netDebt:null;
   const nopat=!isFinancialCode(s.code)&&isNum(op)?op*.70:null;
   let evaFV=null,eva0=null,roic=null;
   if(isNum(invested)&&invested>0&&isNum(nopat)&&shares){
-    const W=.08,N=10;
-    roic=nopat/invested;
-    eva0=nopat-W*invested;
-    let pvEva=0;
-    for(let t=1;t<=N;t++){
-      const eva=eva0*(N-t+1)/N;
-      pvEva+=eva/Math.pow(1+W,t);
-    }
-    const equityValue=invested+pvEva-netDebt;
-    if(equityValue>0)evaFV=equityValue*1e6/shares;
+    const W=.08,N=10;roic=nopat/invested;eva0=nopat-W*invested;let pvEva=0;
+    for(let t=1;t<=N;t++)pvEva+=eva0*(N-t+1)/N/Math.pow(1+W,t);
+    const equityValue=invested+pvEva-netDebt;if(equityValue>0)evaFV=equityValue*1e6/shares;
   }
 
-  // Reverse DCF：現在株価から、5年間に必要なFCF成長率を逆算。理論株価モデルではなく期待値の点検用。
   let reverseG=null,reverseBound=null;
   if(!isFinancialCode(s.code)&&isNum(base)&&base>0&&shares&&isNum(x.px)&&x.px>0){
     const R=.08,G=.01,N=5;
-    const priceAt=g=>{
-      let pv=0;for(let t=1;t<=N;t++)pv+=base*Math.pow(1+g,t)/Math.pow(1+R,t);
-      pv+=base*Math.pow(1+g,N)*(1+G)/(R-G)/Math.pow(1+R,N);
-      const equity=pv-netDebt;
-      return equity>0?equity*1e6/shares:null;
-    };
+    const priceAt=g=>{let pv=0;for(let t=1;t<=N;t++)pv+=base*Math.pow(1+g,t)/Math.pow(1+R,t);pv+=base*Math.pow(1+g,N)*(1+G)/(R-G)/Math.pow(1+R,N);const equity=pv-netDebt;return equity>0?equity*1e6/shares:null};
     let lo=-.20,hi=.40,plo=priceAt(lo),phi=priceAt(hi);
-    if(isNum(plo)&&x.px<plo){reverseBound='<-20%'}
-    else if(isNum(phi)&&x.px>phi){reverseBound='>40%'}
-    else if(isNum(plo)&&isNum(phi)){
-      for(let k=0;k<50;k++){const mid=(lo+hi)/2,pm=priceAt(mid);if(!isNum(pm))break;if(pm<x.px)lo=mid;else hi=mid}
-      reverseG=(lo+hi)/2;
-    }
+    if(isNum(plo)&&x.px<plo)reverseBound='<-20%';
+    else if(isNum(phi)&&x.px>phi)reverseBound='>40%';
+    else if(isNum(plo)&&isNum(phi)){for(let k=0;k<50;k++){const mid=(lo+hi)/2,pm=priceAt(mid);if(!isNum(pm))break;if(pm<x.px)lo=mid;else hi=mid}reverseG=(lo+hi)/2}
   }
 
+  const sotp=s.code==='8058'?sotp8058(x):s.code==='4755'?sotp4755(x):null;
   const vals={
+    'SOTP':sotp&&sotp.value,
     '残余利益':rimV,
     '妥当PBR':isNum(x.roe)&&r>0?x.bps*(x.roe/r):null,
     '業種PER':isNum(perMed)?perMed*x.eps:null,
@@ -533,12 +576,16 @@ function peerModels(s,x,r,rimV){
     '簡易FCFE':fcfeFV,
     'EVA':evaFV
   };
-  const used=Object.entries(w).filter(([k])=>isNum(vals[k])&&vals[k]>0),tw=used.reduce((a,[,z])=>a+z,0);
-  if(!tw)return null;
-  const value=used.reduce((a,[k,z])=>a+vals[k]*z,0)/tw;
-  return {value,rows:used.map(([k,z])=>({name:k,value:vals[k],weight:z/tw})),peerEV,perMed,pbrMed,fcfYears:fcfs.length,
-    payoutFV,sustainableShy,payoutPerShare,payoutReq,payoutG,
-    fcfeFV,fcfeBase,evaFV,eva0,roic,reverseG,reverseBound};
+  const order=[cfg.primary,...cfg.refs];
+  const rows=order.filter((k,i)=>order.indexOf(k)===i&&isNum(vals[k])&&vals[k]>0).map(k=>({name:k,value:vals[k],primary:k===cfg.primary}));
+  let primaryName=cfg.primary,primaryValue=vals[primaryName],fallback=false;
+  if(!(isNum(primaryValue)&&primaryValue>0)){
+    const alt=rows.find(z=>z.name!==cfg.primary);
+    if(!alt)return null;
+    primaryName=alt.name;primaryValue=alt.value;fallback=true;
+  }
+  return {value:primaryValue,primaryName,requestedPrimary:cfg.primary,fallback,rows,peerEV,perMed,pbrMed,fcfYears:fcfs.length,
+    payoutFV,sustainableShy,payoutPerShare,payoutReq,payoutG,fcfeFV,fcfeBase,evaFV,eva0,roic,reverseG,reverseBound,sotp};
 }
 function inputs(s){
   if(s._in!==undefined) return s._in;
@@ -554,7 +601,7 @@ function inputs(s){
   const last=act.length?act[act.length-1]:null;
   const hist=act.slice(-5).map(e=>e/bps);
   let sd=null; if(hist.length>=2){const m=hist.reduce((a,b)=>a+b,0)/hist.length; sd=clip(Math.sqrt(hist.reduce((a,b)=>a+(b-m)*(b-m),0)/hist.length),0,0.3)}
-  return s._in={bps,eps,epsSrc,px,mcap,dps,roe:clip(eps/bps,-0.5,0.6),
+  return s._in={bps,eps,epsSrc,px,mcap,np,dps,roe:clip(eps/bps,-0.5,0.6),
     payout:eps>0&&isNum(dps)?clip(dps/eps,0,1):0.3,
     good:act.length>=3&&act.slice(-3).every(e=>e>0)&&eps>0,
     g:isNum(last)&&last>0?clip(eps/last-1,-0.5,1):null, sd};
@@ -568,7 +615,8 @@ function theo(s){
   const cheapA=isNum(x.px)&&x.px<v, cheapC=isNum(x.px)&&isNum(c2)&&x.px<c2;
   const shy=s._shy, SM=SHYM[mkOf(s)], shyHi=isNum(shy)&&isNum(SM)&&shy>=SM;
   const pick=x.good&&cheapA&&shyHi;
-  const verdict=!x.good?'対象外（赤字期あり・参考値）':comp?(cheapA?'総合理論で割安':'総合理論で割高'):cheapA&&cheapC?'両方で割安':cheapA?'残余利益で割安（業種内では割高）':cheapC?'業種内では割安（残余利益では割高）':'割高';
+  const model=comp?comp.primaryName:'残余利益';
+  const verdict=!x.good?'対象外（赤字期あり・参考値）':cheapA?model+'で割安':model+'で割高';
   return {value:Math.round(v),ri:Math.round(ri),comp,r,c2:isNum(c2)?Math.round(c2):null,verdict,shy,shyHi,pick,...x};
 }
 // 業種内回帰：データを読み込んだときに1回だけ全銘柄で当てはめる
