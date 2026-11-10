@@ -152,11 +152,23 @@ a.btn{text-decoration:none;display:inline-block}
 .hsum span{display:block;font-size:11.5px;color:var(--muted)}
 .hsum b{font-size:17px}
 @media (max-width:480px){.hsum{grid-template-columns:repeat(2,1fr)}.hsum div:nth-child(2){border-right:0}.hsum div:nth-child(-n+2){border-bottom:1px solid var(--rule)}}
-.story{display:grid;gap:8px;font-size:14px;line-height:1.6}
+.story{display:grid;gap:12px;font-size:14px;line-height:1.6}
+.story-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.story-head h3{margin:0;font-size:17px}
+.story-thesis{margin:0;padding:12px 14px;background:var(--paper);border:1px solid var(--rule);border-radius:8px;font-weight:700}
+.story-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.story-card{border:1px solid var(--rule);border-radius:8px;padding:10px 12px;background:var(--surface)}
+.story-card .k{font-size:11.5px;color:var(--muted);margin-bottom:3px}
+.story-card .v{font-size:13.5px;line-height:1.6}
+.story-card.keep{border-left:4px solid var(--up)}
+.story-card.warn{border-left:4px solid #b07a19}
+.story-card.break{border-left:4px solid var(--down)}
+.story-card.kpi{border-left:4px solid var(--accent)}
+.story-price{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.story-price .story-card .v{font-size:18px;font-weight:700}
 .story h3{margin:6px 0 0;font-size:15px}
-.story dl{display:grid;grid-template-columns:72px 1fr;gap:4px 10px;margin:0}
-.story dt{font-size:12px;color:var(--muted);padding-top:2px}
-.story dd{margin:0}
+.story-actions{border-top:1px solid var(--rule);padding-top:10px}
+@media (max-width:520px){.story-grid,.story-price{grid-template-columns:1fr}.story-thesis{font-size:13.5px}.story-card{padding:10px}}
 .jl{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule)}
 .jl li{padding:8px 2px;border-bottom:1px solid var(--rule);font-size:13.5px;line-height:1.55}
 .jl .d{color:var(--muted);font-size:12px;margin-right:6px}
@@ -657,20 +669,29 @@ function storyBox(code){
   let x='<div class="story">';
   if(h){
     const p=posOf(watched(code)?view(watched(code)):{code,px:BY[code]&&BY[code]._px});
-    x+='<h3>投資ストーリー '+(h.state?'<span class="pill '+stateCls(h.state)+'">'+esc(h.state)+'</span>':'')+'</h3>'+
-      (h.story?'<p style="margin:0">'+esc(h.story)+'</p>':'<p class="small" style="margin:0">ストーリーはまだありません。スプレッドシートの「保有詳細」に書いてください。</p>')+
-      '<dl><dt>維持</dt><dd>'+esc(h.keep||'—')+'</dd><dt>要注意</dt><dd>'+esc(h.warn||'—')+'</dd><dt>崩壊</dt><dd>'+esc(h.broken||'—')+'</dd><dt>監視KPI</dt><dd>'+esc(h.kpi||'—')+'</dd>'+
-      '<dt>適正株価</dt><dd class="num">'+(isNum(h.fair)?fm(h.fair,0)+'円':'置かない')+(isNum(h.addLine)?'　買い増し目安 '+fm(h.addLine,0)+'円以下':'')+'</dd>'+
-      (h.note?'<dt>方針</dt><dd>'+esc(h.note)+'</dd>':'')+'</dl>'+
-      '<div class="hsum num" style="margin:4px 0"><div><span>株数</span><b>'+(p.sh!=null?fm(p.sh,0):'—')+'</b></div><div><span>評価額</span><b>'+(p.val!=null?fm(p.val,0):'—')+'</b></div><div><span>損益</span><b>'+(p.plr!=null?(p.pl>=0?'+':'')+fm(p.pl,0)+'（'+pc(p.plr)+'）':'—')+'</b></div><div><span>年間配当（予想）</span><b>'+(p.div!=null?fm(p.div,0):'—')+'</b>'+(p.yoc!=null?' <span class="small">取得単価比 '+pc(p.yoc)+'</span>':'')+'</div></div>'+
-      '<div class="form"><label for="h-sh">株数<input id="h-sh" inputmode="numeric" value="'+(p.sh!=null?p.sh:'')+'"></label><label for="h-cost">取得単価（円）<input id="h-cost" inputmode="decimal" value="'+(p.cost!=null?p.cost:'')+'"></label></div>'+
-      '<div class="actions"><button class="btn" data-act="savehold" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>株数・取得単価を保存</button></div>';
+    x+='<div class="story-head"><h3>投資ストーリー</h3>'+(h.state?'<span class="pill '+stateCls(h.state)+'">'+esc(h.state)+'</span>':'')+'</div>'+
+      (h.story?'<p class="story-thesis">'+esc(h.story)+'</p>':'<p class="small" style="margin:0">ストーリーはまだありません。スプレッドシートの「保有詳細」に書いてください。</p>')+
+      '<div class="story-grid">'+
+        '<div class="story-card keep"><div class="k">維持する条件</div><div class="v">'+esc(h.keep||'—')+'</div></div>'+
+        '<div class="story-card warn"><div class="k">要注意サイン</div><div class="v">'+esc(h.warn||'—')+'</div></div>'+
+        '<div class="story-card break"><div class="k">崩壊条件</div><div class="v">'+esc(h.broken||'—')+'</div></div>'+
+        '<div class="story-card kpi"><div class="k">監視KPI</div><div class="v">'+esc(h.kpi||'—')+'</div></div>'+
+      '</div>'+
+      '<div class="story-price">'+
+        '<div class="story-card"><div class="k">適正株価</div><div class="v num">'+(isNum(h.fair)?fm(h.fair,0)+'円':'置かない')+'</div></div>'+
+        '<div class="story-card"><div class="k">買い増し目安</div><div class="v num">'+(isNum(h.addLine)?fm(h.addLine,0)+'円以下':'置かない')+'</div></div>'+
+      '</div>'+
+      (h.note?'<div class="story-card"><div class="k">方針・メモ</div><div class="v">'+esc(h.note)+'</div></div>':'')+
+      '<div class="hsum num" style="margin:0"><div><span>株数</span><b>'+(p.sh!=null?fm(p.sh,0):'—')+'</b></div><div><span>評価額</span><b>'+(p.val!=null?fm(p.val,0):'—')+'</b></div><div><span>損益</span><b style="color:'+(p.pl!=null&&p.pl>=0?'var(--up)':'var(--down)')+'">'+(p.plr!=null?(p.pl>=0?'+':'')+fm(p.pl,0)+'（'+pc(p.plr)+'）':'—')+'</b></div><div><span>年間配当（予想）</span><b>'+(p.div!=null?fm(p.div,0):'—')+'</b>'+(p.yoc!=null?' <span class="small">取得単価比 '+pc(p.yoc)+'</span>':'')+'</div></div>'+
+      '<div class="story-actions"><div class="form"><label for="h-sh">株数<input id="h-sh" inputmode="numeric" value="'+(p.sh!=null?p.sh:'')+'"></label><label for="h-cost">取得単価（円）<input id="h-cost" inputmode="decimal" value="'+(p.cost!=null?p.cost:'')+'"></label></div>'+
+      '<div class="actions"><button class="btn" data-act="savehold" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>株数・取得単価を保存</button></div></div>';
   }
   if(js.length) x+='<h3>ストーリー判定の記録</h3><ul class="jl">'+js.map(j=>'<li><span class="d">'+esc(j.date)+'</span><span class="pill '+verdCls(j.verdict)+'">'+esc(j.verdict||'—')+'</span> '+esc(j.event)+
     (j.reason?'<div class="small">'+esc(j.reason)+'</div>':'')+(j.next?'<div class="small">次に確認：'+esc(j.next)+'</div>':'')+
     (/^https?:/.test(j.src||'')?'<div class="small"><a href="'+esc(j.src)+'" target="_blank" rel="noopener">出典</a></div>':(j.src?'<div class="small">出典：'+esc(j.src)+'</div>':''))+'</li>').join('')+'</ul>';
   return x+'</div>';
 }
+
 function saveHold(code){
   const sh=document.getElementById('h-sh').value.trim(), co=document.getElementById('h-cost').value.trim();
   act('株数・取得単価の保存','saveHold',{code,name:BY[code]?BY[code].name:'',shares:sh===''?null:pn(sh),cost:co===''?null:pn(co)});
