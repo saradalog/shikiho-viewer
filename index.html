@@ -177,34 +177,16 @@ html{-webkit-tap-highlight-color:transparent}
 <body>
 <header class="top"><div class="wrap">
   <div class="brand"><h1>四季報ビューア</h1><span id="brand-sub">J-Quants最新</span></div>
-  <nav class="tabs" aria-label="画面切り替え"><a href="#" id="t-all">銘柄一覧</a><a href="#hold" id="t-hold">保有銘柄<span id="hcount" class="cnt"></span></a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
+  <nav class="tabs" aria-label="画面切り替え"><a href="#hold" id="t-hold">保有銘柄<span id="hcount" class="cnt"></span></a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
   <div class="searchrow">
     <select id="mk" aria-label="市場"><option value="jp">日本株</option><option value="us">米国株</option><option value="hk">中国株（香港）</option></select>
     <input id="q" type="search" placeholder="コード・ティッカー・銘柄名で検索" autocomplete="off" aria-label="銘柄を検索">
-    <select id="sort" aria-label="並べ替え">
-      <option value="code">コード順</option>
-      <option value="per">今期PER 低い順</option>
-      <option value="pbr">PBR 低い順</option>
-      <option value="yld">配当利回り 高い順</option>
-      <option value="opg">予想営業増益率 高い順</option>
-      <option value="opm">予想営業利益率 高い順</option>
-      <option value="shy">株主還元利回り 高い順</option>
-      <option value="pick">割安×高還元（おすすめ）を先に</option>
-      <option value="sat">営業利益/EVの順位（参考）</option>
-    </select>
-  </div>
-  <div class="chips" role="group" aria-label="絞り込み">
-    <button class="chip" id="f-up" aria-pressed="false">予想 増収増益</button>
-    <button class="chip" id="f-yld" aria-pressed="false">利回り3%以上</button>
-    <button class="chip" id="f-num" aria-pressed="false">数値ありのみ</button>
-    <button class="chip jp-only" id="f-g17" aria-pressed="false">成長17分野</button>
-    <button class="chip" id="f-sat" aria-pressed="false">営業利益/EV上位100</button>
   </div>
 </div></header>
 <main class="wrap" id="app"><div class="loading">データを読み込んでいます…</div></main>
 <script>
 (function(){
-const app=document.getElementById('app'), qEl=document.getElementById('q'), sortEl=document.getElementById('sort');
+const app=document.getElementById('app'), qEl=document.getElementById('q');
 let D=null, H=null, IDX={}, BY={}, shown=100;
 const flt={up:false,yld:false,num:false,g17:false,sat:false};
 const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
@@ -298,6 +280,14 @@ function filtered(){
   return a;
 }
 
+function renderSearch(){
+  setTab('');
+  const q=qEl.value.trim().toLowerCase().normalize('NFKC');
+  if(!q){location.hash='hold';return}
+  const a=D.s.filter(s=>s._key.includes(q)).slice(0,30);
+  app.innerHTML='<div class="meta">検索結果 '+a.length+'件（最大30件）</div>'+(a.length?'<ul class="list'+(MK==='jp'?'':' wide')+'">'+a.map(s=>'<li><a href="#s-'+esc(s.code)+'"><span class="code">'+esc(s.code)+'</span><span class="nm">'+esc(s.name)+'</span><span class="px num">'+(s._has?fm(s._px,pd(s))+cu(s):'—')+'</span><span class="sub num"><span>PER <b>'+(isNum(s._per)?s._per.toFixed(1):'—')+'</b></span><span>PBR <b>'+(isNum(s._pbr)?s._pbr.toFixed(2):'—')+'</b></span></span></a></li>').join('')+'</ul>':'<div class="empty">該当する銘柄がありません。</div>';
+}
+
 function renderList(){
   const a=filtered(); const rec=store.get('shk-recent',[]).filter(c=>BY[c]);
   let h='';
@@ -337,14 +327,14 @@ function satBox(s){
   const dd=DS[mkOf(s)]; return h+'<p class="small">'+esc((dd&&dd.sat&&dd.sat.note)||'')+'</p></section>';
 }
 function renderDetail(code){
-  const s=BY[code]; if(!s){app.innerHTML='<a class="back" href="#">← 一覧へ</a><div class="empty">銘柄コード「'+esc(code)+'」は収録されていません。</div>';return}
+  const s=BY[code]; if(!s){app.innerHTML='<a class="back" href="#hold">← 保有銘柄へ</a><div class="empty">銘柄コード「'+esc(code)+'」は収録されていません。</div>';return}
   let rec=store.get('shk-recent',[]).filter(c=>c!==code); rec.unshift(code); store.set('shk-recent',rec.slice(0,8));
   const L=s.l||[]; const g=n=>L[col('list',n)];
   const yr=(s.y||[]).slice().sort((a,b)=>0);
   const F=(s.f||[])[0]||[]; const gf=n=>F[col('fin',n)];
   const C=(s.c||[])[0]||[]; const gc=n=>C[col('cmt',n)];
   const dv=(lo,hi)=>!isNum(lo)?'—':(lo===hi||!isNum(hi)?fm(lo,1):fm(lo,1)+'〜'+fm(hi,1));
-  let h='<a class="back" href="#">← 一覧へ</a>';
+  let h='<a class="back" href="#hold">← 保有銘柄へ</a>';
   h+='<div class="dh"><div class="c">'+esc(s.code)+'</div><h2>'+esc(s.name)+'</h2><div class="p num">'+(isNum(s._px)?'<b>'+fm(s._px,pd(s))+'</b>'+cu(s)+'　'+esc(g('株価基準日')||'')+' 時点':'株価は未判読')+'　'+esc((s.y&&s.y[0]&&s.y[0][0])||'')+'</div></div>';
   h+='<div class="tiles num">'+
     '<div class="tile"><div class="k">今期予想PER</div><div class="v">'+(isNum(s._per)?s._per.toFixed(1)+'倍':'—')+'</div></div>'+
@@ -400,6 +390,62 @@ function renderDetail(code){
 // 検証（fair-value-backtest）では、この2つで割安な銘柄の5年後リターン中央値が元の版より約8ポイント高かった。
 let SEC=null, SHY_MED=null;
 const clip=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));
+
+// 保有8銘柄は、四季報ビューアで取得できる既存データから銘柄別に評価モデルを組み合わせる。
+// 算出不能なモデルは除外し、残った重みを100%へ再配分する。
+const COMPOSITE_WEIGHTS={
+  '8306':{'残余利益':.60,'妥当PBR':.30,'業種PER':.10},
+  '8316':{'残余利益':.60,'妥当PBR':.30,'業種PER':.10},
+  '8058':{'残余利益':.25,'DCF':.30,'業種EV/EBITDA':.20,'業種PER':.15,'業種PBR':.10},
+  '6432':{'DCF':.60,'業種EV/EBITDA':.25,'業種PER':.15},
+  '8088':{'DCF':.45,'業種EV/EBITDA':.35,'業種PER':.10,'業種PBR':.10},
+  '7203':{'DCF':.50,'業種EV/EBITDA':.30,'業種PER':.20},
+  '8473':{'残余利益':.50,'妥当PBR':.35,'業種PER':.15},
+  '4755':{'残余利益':.20,'DCF':.15,'業種EV/EBITDA':.35,'業種PER':.15,'業種PBR':.15}
+};
+function median(a){const x=a.filter(isNum).sort((p,q)=>p-q);if(!x.length)return null;const n=x.length;return n%2?x[(n-1)/2]:(x[n/2-1]+x[n/2])/2}
+function secOf(s){return SEC&&SEC.c[s.code]!=null?SEC.c[s.code]:null}
+function actualOp(s){const Y=n=>col('years',n),a=(s.y||[]).filter(r=>r[Y('区分')]==='実績'&&isNum(r[Y('営業利益（百万円）')]));return a.length?a[a.length-1][Y('営業利益（百万円）')]:null}
+function salesGrowth(s){const Y=n=>col('years',n),a=(s.y||[]).filter(r=>r[Y('区分')]==='実績'&&isNum(r[Y('売上高（百万円）')])).map(r=>r[Y('売上高（百万円）')]);if(a.length<2||!(a[0]>0))return 0;const n=Math.min(5,a.length-1),x=a[a.length-1-n],y=a[a.length-1];return x>0&&y>0?clip(Math.pow(y/x,1/n)-1,0,.15):0}
+function peerModels(s,x,r,rimV){
+  const w=COMPOSITE_WEIGHTS[s.code];if(!w||mkOf(s)!=='jp')return null;
+  const F=(s.f||[])[0]||[],gf=n=>F[col('fin',n)],sec=secOf(s);
+  const peers=(DS.jp&&DS.jp.s||[]).filter(p=>p.code!==s.code&&(sec==null||secOf(p)===sec));
+  const perMed=median(peers.map(p=>p._per).filter(v=>isNum(v)&&v>0&&v<100));
+  const pbrMed=median(peers.map(p=>p._pbr).filter(v=>isNum(v)&&v>0&&v<10));
+  const shares=isNum(x.mcap)&&isNum(x.px)&&x.px>0?x.mcap/x.px:null;
+  const ibd=gf('有利子負債'),cash=gf('現金等 当期'),dep=gf('減価償却 実績'),op=actualOp(s);
+  const netDebt=(isNum(ibd)?ibd:0)-(isNum(cash)?cash:0);
+  const eb=isNum(op)&&isNum(dep)?op+dep:null;
+  const evM=isNum(x.mcap)?x.mcap/1e6+netDebt:null;
+  const peerEV=median(peers.map(p=>{
+    const pi=inputs(p),PF=(p.f||[])[0]||[],pg=n=>PF[col('fin',n)],pop=actualOp(p),pdep=pg('減価償却 実績');
+    if(!pi||!isNum(pi.mcap)||!isNum(pop)||!isNum(pdep)||pop+pdep<=0)return null;
+    const pev=pi.mcap/1e6+(isNum(pg('有利子負債'))?pg('有利子負債'):0)-(isNum(pg('現金等 当期'))?pg('現金等 当期'):0);
+    return pev>0?pev/(pop+pdep):null;
+  }).filter(v=>isNum(v)&&v>0&&v<60));
+  const fcfs=[gf('フリーCF 当期'),gf('フリーCF 前期')].filter(isNum),base=fcfs.length?fcfs.reduce((a,b)=>a+b,0)/fcfs.length:null;
+  let dcf=null;
+  if(isNum(base)&&base>0&&shares){
+    const R=.08,G=.01,N=5,gr=salesGrowth(s);
+    let pv=0;for(let t=1;t<=N;t++)pv+=base*Math.pow(1+gr,t)/Math.pow(1+R,t);
+    pv+=base*Math.pow(1+gr,N)*(1+G)/(R-G)/Math.pow(1+R,N);
+    const eq=pv-netDebt;if(eq>0)dcf=eq*1e6/shares;
+  }
+  const evm=isNum(peerEV)&&isNum(eb)&&shares?(peerEV*eb-netDebt)*1e6/shares:null;
+  const vals={
+    '残余利益':rimV,
+    '妥当PBR':isNum(x.roe)&&r>0?x.bps*(x.roe/r):null,
+    '業種PER':isNum(perMed)?perMed*x.eps:null,
+    '業種PBR':isNum(pbrMed)?pbrMed*x.bps:null,
+    '業種EV/EBITDA':evm,
+    'DCF':dcf
+  };
+  const used=Object.entries(w).filter(([k])=>isNum(vals[k])&&vals[k]>0),tw=used.reduce((a,[,z])=>a+z,0);
+  if(!tw)return null;
+  const value=used.reduce((a,[k,z])=>a+vals[k]*z,0)/tw;
+  return {value,rows:used.map(([k,z])=>({name:k,value:vals[k],weight:z/tw})),peerEV,perMed,pbrMed,fcfYears:fcfs.length};
+}
 function inputs(s){
   if(s._in!==undefined) return s._in;
   const F=(s.f||[])[0]||[]; const gf=n=>F[col('fin',n)]; const L=s.l||[]; const g=n=>L[col('list',n)];
@@ -423,13 +469,13 @@ function rim(bps,roe0,r,payout){let v=bps,b=bps;for(let t=1;t<=10;t++){const rt=
 function theo(s){
   const x=inputs(s); if(!x) return null;
   const mY=yen(s,x.mcap); const r=!isNum(mY)?0.08:mY>=2.5e11?0.06:mY>=3e10?0.08:0.10;
-  const v=rim(x.bps,x.roe,r,x.payout); if(!(v>0)) return null;
-  const c2=s._c2;
+  const ri=rim(x.bps,x.roe,r,x.payout); if(!(ri>0)) return null;
+  const c2=s._c2, comp=peerModels(s,x,r,ri), v=comp&&comp.value>0?comp.value:ri;
   const cheapA=isNum(x.px)&&x.px<v, cheapC=isNum(x.px)&&isNum(c2)&&x.px<c2;
   const shy=s._shy, SM=SHYM[mkOf(s)], shyHi=isNum(shy)&&isNum(SM)&&shy>=SM;
   const pick=x.good&&cheapA&&shyHi;
-  const verdict=!x.good?'対象外（赤字期あり・参考値）':cheapA&&cheapC?'両方で割安':cheapA?'残余利益で割安（業種内では割高）':cheapC?'業種内では割安（残余利益では割高）':'割高';
-  return {value:Math.round(v),r,c2:isNum(c2)?Math.round(c2):null,verdict,shy,shyHi,pick,...x};
+  const verdict=!x.good?'対象外（赤字期あり・参考値）':comp?(cheapA?'総合理論で割安':'総合理論で割高'):cheapA&&cheapC?'両方で割安':cheapA?'残余利益で割安（業種内では割高）':cheapC?'業種内では割安（残余利益では割高）':'割高';
+  return {value:Math.round(v),ri:Math.round(ri),comp,r,c2:isNum(c2)?Math.round(c2):null,verdict,shy,shyHi,pick,...x};
 }
 // 業種内回帰：データを読み込んだときに1回だけ全銘柄で当てはめる
 function solve(A,y){ // 正規方程式 (A'A)β=A'y をガウスの消去法で解く
@@ -550,7 +596,7 @@ function pn(v){ if(isNum(v)) return v; if(v==null) return null; const t=String(v
   const neg=/^\(|^-|^△/.test(t); const n=parseFloat(t.replace(/[^0-9.]/g,'')); if(!isFinite(n)) return null; return neg?-n:n; }
 function judgeCls(j){return j==='買い検討'?'buy':j==='売り検討'?'sell':'hold'}
 // 保有銘柄はメモの先頭が「保有」の行。監視リスト（スプレッドシート）は同じ表のまま、画面だけ分ける
-const isHold=o=>/^保有/.test(String(o.memo||''));
+const isHold=o=>/^保有/.test(String(o.memo||''))||!!holdOf(o.code);
 const memoBody=o=>String(o.memo||'').replace(/^保有\s*/,'');
 // 株価が監視シートで取れていないときは、四季報データ（J-Quantsの前営業日終値）で補って判定する
 function view(o){
@@ -585,7 +631,7 @@ function renderWatch(kind){
     const nAlert=rows.filter(o=>/要注意|崩壊/.test((holdOf(o.code)||{}).state||'')).length;
     h+='<div class="hsum num"><div><span>保有銘柄数</span><b>'+rows.length+'</b>'+(nAlert?' <span class="pill warn">要注意 '+nAlert+'</span>':'')+'</div><div><span>評価額</span><b>'+(val?fm(val,0):'—')+'</b></div><div><span>損益</span><b style="color:'+(val-basis>=0?'var(--up)':'var(--down)')+'">'+(basis?(val-basis>=0?'+':'')+fm(val-basis,0)+'（'+pc(val/basis-1)+'）':'—')+'</b></div><div><span>年間配当（今期予想・税引前）</span><b>'+(div?fm(div,0):'—')+'</b>'+(div&&basis?' <span class="small">取得額比 '+pc(div/basis)+'</span>':'')+'</div></div>'+(nFx?'<p class="small">評価額・損益・配当の合計は日本株（円）だけ。米国株・中国株の'+nFx+'銘柄は通貨が違うため合計に入れていません。</p>':'');
   }
-  if(!rows.length&&W.state!=='loading') h+='<div class="empty">'+(kind==='hold'?'保有銘柄はまだありません。銘柄を開き「保有に追加」を押すか、監視銘柄で「保有中」にチェックして保存してください。':'監視銘柄はまだありません。銘柄一覧から銘柄を開き「監視に追加」を押してください。')+'</div>';
+  if(!rows.length&&W.state!=='loading') h+='<div class="empty">'+(kind==='hold'?'保有銘柄はまだありません。銘柄を開き「保有に追加」を押すか、監視銘柄で「保有中」にチェックして保存してください。':'監視銘柄はまだありません。上の検索から銘柄を開き「監視に追加」を押してください。')+'</div>';
   h+='<div style="border-top:1px solid var(--rule)">'+rows.map(o=>{
     const pos=(isNum(o.px)&&isNum(o.theo)&&o.theo>0)?Math.max(0,Math.min(100,o.px/o.theo/ (2) *100)):null;
     const sl=(isNum(o.mult))?Math.min(100,o.mult/2*100):60;
@@ -631,11 +677,12 @@ function saveHold(code){
 function watchBox(code){
   const s=BY[code]; const t=theo(s); const o0=watched(code); const o=o0?view(o0):null;
   let h='<div class="theo">';
-  h+='<div class="big num"><div><span>自動理論株価</span><b>'+(t?fm(t.value,pd(s))+cu(s):'—')+'</b></div>'+
+  h+='<div class="big num"><div><span>'+(t&&t.comp?'総合理論株価':'自動理論株価')+'</span><b>'+(t?fm(t.value,pd(s))+cu(s):'—')+'</b></div>'+
      (o?'<div><span>採用理論株価</span><b>'+fm(o.theo,pd(s))+cu(s)+'</b></div><div><span>現在株価</span><b>'+fm(o.px,pd(s))+cu(s)+'</b></div><div><span>判定</span><b><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span></b></div>':
        (t&&isNum(s._px)?'<div><span>紙面株価との差</span><b>'+pc(s._px/t.value-1)+'</b></div>':''))+'</div>';
   if(t) h+='<p class="small" style="margin:0">'+(t.pick?'<span class="pill buy">割安×高還元</span> ':'')+'株主還元利回り <b class="num">'+pc(t.shy)+'</b>'+(s._shySrc?'（'+s._shySrc+'）':'')+'　黒字続きの銘柄の中央値 '+pc(SHYM[mkOf(s)])+'（'+(t.shyHi?'以上':'未満')+'）</p>';
   if(t) h+='<p class="small" style="margin:0">判定：<b>'+esc(t.verdict)+'</b>　業種内回帰の理論株価 <b class="num">'+(t.c2?fm(t.c2,pd(s))+cu(s):'—')+'</b></p>'+
+    (t.comp?'<div class="theo" style="margin-top:8px"><p class="small" style="margin:0"><b>銘柄別モデル</b>：算出可能なモデルだけで重みを再配分</p>'+t.comp.rows.map(z=>'<div class="vrow"><div><span>'+esc(z.name)+' '+Math.round(z.weight*100)+'%</span></div><b>'+fm(z.value,pd(s))+cu(s)+'</b></div>').join('')+(t.comp.fcfYears?'<p class="small" style="margin:0">DCFの基準FCFは取得できる直近'+t.comp.fcfYears+'期の平均。割引率8%・永久成長率1%・5年予測。</p>':'')+'</div>':'')+
     '<details class="f"><summary>計算の内訳</summary><div class="num">'+
     '<span>残余利益：1株純資産 '+fm(t.bps,2)+cu(s)+' ＋ 10年分の超過利益（'+t.epsSrc+' '+fm(t.eps,2)+cu(s)+' → ROE '+pc(t.roe)+'、資本コスト '+pc(t.r,0)+'、配当性向 '+pc(t.payout,0)+'）</span>'+
     '<span>資本コスト：時価総額 '+(isNum(yen(s,t.mcap))?fm(yen(s,t.mcap)/1e8,0)+'億円':'不明')+(mkOf(s)!=='jp'?'（円換算）':'')+'（2,500億円以上6%・300億円以上8%・それ未満10%）</span>'+(mkOf(s)!=='jp'?'<span>1株純資産・EPSは財務の通貨（'+esc(s._fc||'')+'）を株価の通貨に直して計算</span>':'')+'<span>業種内回帰：'+esc(SEC&&SEC.c[s.code]!=null?SEC.names[SEC.c[s.code]]:(mkOf(s)==='jp'?'業種不明':MKN[mkOf(s)]+'の全銘柄'))+'の銘柄で、ROE・予想EPS伸び率'+(t.g!=null?'（'+pc(t.g)+'）':'')+'・ROEのぶれ・規模からPBRを推定</span>'+
@@ -652,7 +699,7 @@ function watchBox(code){
   if(o&&isHold(o)||holdOf(code)) h+='<div class="theo" style="margin-top:12px">'+storyBox(code)+'</div>';
   return h;
 }
-function setTab(t){for(const k of ['all','hold','watch','settings']){const el=document.getElementById('t-'+k); if(el) el.setAttribute('aria-current',t===k?'page':'false')}}
+function setTab(t){for(const k of ['hold','watch','settings']){const el=document.getElementById('t-'+k); if(el) el.setAttribute('aria-current',t===k?'page':'false')}}
 app.addEventListener('click',async e=>{const b=e.target.closest('button[data-act]'); if(!b) return; e.preventDefault(); const a=b.dataset.act, c=b.dataset.code;
   if(a==='reload'){W.msg=null;readWatch()} else if(a==='add') addWatch(c); else if(a==='addhold') addHold(c); else if(a==='save') saveWatch(c); else if(a==='savehold') saveHold(c);
   else if(a==='remove'){ if(b.dataset.confirm){removeWatch(c)} else {b.dataset.confirm='1';b.textContent='本当に外す（もう一度押す）'} } });
@@ -691,7 +738,7 @@ app.addEventListener('click',async e=>{const b=e.target.closest('button[data-act
   if(a==='cfg-save'){ e.preventDefault(); const url=document.getElementById('c-url').value.trim(), token=document.getElementById('c-token').value.trim();
     if(!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)){S.msg={t:'URLは https://script.google.com/macros/s/…/exec の形で入れてください。',err:true};renderSettings();return}
     store.set('shk-cfg',{url,token}); S.busy=true; S.msg={t:'接続を確かめています…'}; renderSettings();
-    try{ await api('ping'); S.busy=false; S.msg={t:'つながりました。'}; renderSettings(); readWatch(); if(!D){ if(await fetchData()) { location.hash=''; } } }
+    try{ await api('ping'); S.busy=false; S.msg={t:'つながりました。'}; renderSettings(); readWatch(); if(!D){ if(await fetchData()) { location.hash='hold'; } } }
     catch(err){ S.busy=false; S.msg={t:errText(err),err:true}; renderSettings(); } }
   if(a==='data-refresh'){ e.preventDefault(); await fetchData(); }
 });
@@ -725,16 +772,14 @@ async function boot(){
   if(cfg()){ app.innerHTML='<div class="loading">'+MKN[MK]+'のデータを取得しています…（初回は20〜40秒ほどかかります）</div>'; if(await fetchData()){route();readWatch();if(MK!=='jp'&&!DS.jp) fetchData('jp');return} }
   if(location.hash!=='#settings') location.hash='settings'; else renderSettings();
 }
-function route(){ if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#watch'){renderWatch('watch');return} if(location.hash==='#hold'){renderWatch('hold');return} setTab('all'); const m=location.hash.match(/^#s-([0-9A-Za-z]+)$/); if(m) renderDetail(m[1].toUpperCase()); else renderList(); }
-let t; qEl.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{shown=100;if(location.hash)location.hash='';renderList()},120)});
-qEl.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=qEl.value.trim().toUpperCase().normalize('NFKC');const hk=v.padStart(4,'0')+'.HK';const c=BY[v]?v:BY[hk]?hk:null;if(c){location.hash='s-'+c}}});
+function route(){ if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#watch'){renderWatch('watch');return} if(location.hash==='#hold'){renderWatch('hold');return} if(location.hash==='#search'){renderSearch();return} const m=location.hash.match(/^#s-([0-9A-Za-z.\-]+)$/); if(m){renderDetail(m[1].toUpperCase());return} location.hash='hold'; }
+let t; qEl.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{if(qEl.value.trim()){if(location.hash!=='#search')location.hash='search';else renderSearch()}else location.hash='hold'},120)});
+qEl.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=qEl.value.trim().toUpperCase().normalize('NFKC');const hk=v.padStart(4,'0')+'.HK';const exact=BY[v]?v:BY[hk]?hk:null;if(exact){location.hash='s-'+exact;return}const m=D.s.find(s=>s._key.includes(v.toLowerCase()));if(m)location.hash='s-'+m.code}});
 mkEl.addEventListener('change',async()=>{ MK=mkEl.value; store.set('shk-mk',MK); D=DS[MK]||null; H=D&&D.h; brand(); shown=100; qEl.value='';
-  if(location.hash) history.replaceState(null,'',location.pathname+location.search);
+  history.replaceState(null,'',location.pathname+location.search+'#hold');
   if(!D){ app.innerHTML='<div class="loading">'+MKN[MK]+'のデータを取得しています…（初回は20〜40秒ほどかかります）</div>';
     if(!(await fetchData(MK))){ app.innerHTML='<div class="empty">'+esc((S.msg&&S.msg.t)||'取得できませんでした')+'</div>'; return; } }
-  setTab('all'); renderList(); autoRefresh(); });
-sortEl.addEventListener('change',()=>{shown=100;if(location.hash)location.hash='';renderList()});
-for(const k of ['up','yld','num','g17','sat']){const b=document.getElementById('f-'+k);b.onclick=()=>{flt[k]=!flt[k];b.setAttribute('aria-pressed',flt[k]);shown=100;if(location.hash)location.hash='';renderList()}}
+  renderWatch('hold'); autoRefresh(); });
 window.addEventListener('hashchange',route);
 boot();
 })();
