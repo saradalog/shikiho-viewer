@@ -745,35 +745,38 @@ const memoBody=o=>String(o.memo||'').replace(/^保有\s*/,'');
 // 最終判定は票数と乖離中央値を併用し、単一モデルだけで売り判定しない。
 function valuationJudge(s,px){
   const t=s?theo(s):null;
-  if(!t||!isNum(px)||px<=0)return null;
-  const models=[];
-  if(t.comp&&Array.isArray(t.comp.rows)){
-    t.comp.rows.forEach(z=>{if(isNum(z.value)&&z.value>0)models.push({name:z.name,value:z.value,dev:px/z.value-1})});
-  }else if(isNum(t.value)&&t.value>0){
-    models.push({name:'自動理論株価',value:t.value,dev:px/t.value-1});
-  }
-  // 業種内回帰は銘柄別モデルとは別系統の確認モデルとして1票加える。
-  if(isNum(t.c2)&&t.c2>0&&!models.some(z=>z.name==='業種内回帰'))models.push({name:'業種内回帰',value:t.c2,dev:px/t.c2-1});
-  if(!models.length)return null;
-  const ds=models.map(z=>z.dev).sort((a,b)=>a-b),med=ds.length%2?ds[(ds.length-1)/2]:(ds[ds.length/2-1]+ds[ds.length/2])/2;
-  const over=models.filter(z=>z.dev>.15).length, neutral=models.filter(z=>Math.abs(z.dev)<=.15).length, under=models.length-over-neutral;
+  if(!t||!isNum(px)||px<=0||!isNum(t.value)||t.value<=0)return null;
+  const primaryDev=px/t.value-1;
   let label='妥当';
-  // 60%以上が割高票かつ中央値25%以上なら割高。
-  if(over/models.length>=.60&&med>.25)label='割高';
-  // 割高票が最多で中央値10%以上ならやや割高。
-  else if(over>Math.max(neutral,under)&&med>.10)label='やや割高';
-  return {label,models,medianDev:med,over,neutral,under};
+  if(primaryDev>.30)label='割高';
+  else if(primaryDev>.15)label='やや割高';
+
+  const refs=[];
+  if(t.comp&&Array.isArray(t.comp.rows)){
+    t.comp.rows.filter(z=>z.name!==t.comp.primaryName).forEach(z=>{
+      if(isNum(z.value)&&z.value>0)refs.push({name:z.name,value:z.value,dev:px/z.value-1});
+    });
+  }
+  if(isNum(t.c2)&&t.c2>0)refs.push({name:'業種内回帰',value:t.c2,dev:px/t.c2-1});
+  const primaryOver=primaryDev>.15;
+  const agree=refs.filter(z=>primaryOver?z.dev>.15:z.dev<=.15).length;
+  const ratio=refs.length?agree/refs.length:null;
+  let confidence=refs.length?(ratio>=.67?'高':ratio>=.40?'中':'低'):'参考不足';
+  if(t.comp&&t.comp.fallback)confidence='低';
+  return {label,primaryModel:t.comp?t.comp.primaryName:'残余利益',primaryDev,refs,agree,total:refs.length,confidence,fallback:!!(t.comp&&t.comp.fallback)};
 }
 
 // 株価が監視シートで取れていないときは、四季報データ（J-Quantsの前営業日終値）で補って判定する
 function view(o){
   const s=BY[o.code]; let px=o.px, pxSrc='';
   if(!isNum(px)&&s&&isNum(s._px)){px=s._px;pxSrc='終値'}
-  const theo=o.theo, sell=isNum(o.sellLine)?o.sellLine:(isNum(theo)&&isNum(o.mult)?theo*o.mult:null);
+  const live=s?theo(s):null;
+  const theo=isNum(o.ovr)?o.ovr:(live&&isNum(live.value)?live.value:o.theo);
+  const sell=isNum(theo)&&isNum(o.mult)?theo*o.mult:null;
   const dev=isNum(px)&&isNum(theo)&&theo>0?px/theo-1:null;
   const vj=isNum(px)&&s?valuationJudge(s,px):null;
   const judge=!isNum(px)?'株価なし':vj?vj.label:!isNum(theo)?'理論株価なし':'妥当';
-  return Object.assign({},o,{px,pxSrc,dev,judge,sellLine:sell,vj});
+  return Object.assign({},o,{theo,px,pxSrc,dev,judge,sellLine:sell,vj});
 }
 function paintWatch(){
   const nh=W.rows.filter(isHold).length, nw=W.rows.length-nh;
@@ -808,7 +811,7 @@ function renderWatch(kind){
     (pos!=null?'<span class="bar" aria-hidden="true"><b style="left:0;width:50%;background:var(--buy-soft)"></b><b style="left:'+sl+'%;right:0;background:var(--sell-soft)"></b><i style="left:'+pos+'%"></i></span>':'')+
     (kind==='hold'?holdSub(o):'')+
     (memoBody(o)?'<span class="sub">'+esc(memoBody(o))+'</span>':'')+'</a>'}).join('')+'</div>';
-  h+='<p class="small">株価は株探（米国株・中国株はGoogleファイナンス）から取得。取れないときは「（終値）」としてJ-Quantsの前営業日終値で判定。売り側の判定は複数モデルの多数決と乖離幅で「割高・やや割高・妥当」に分類。単一モデルの売りラインだけでは判定しない。<a href="'+SHEET_URL+'">スプレッドシートを開く</a></p>';
+  h+='<p class="small">株価は株探（米国株・中国株はGoogleファイナンス）から取得。取れないときは「（終値）」としてJ-Quantsの前営業日終値で判定。判定は銘柄ごとの主モデルとの乖離で「割高・やや割高・妥当」に分類。参考モデルは判定を上書きせず、確信度の確認だけに使う。<a href="'+SHEET_URL+'">スプレッドシートを開く</a></p>';
   app.innerHTML=h;
 }
 function holdSub(o){
@@ -946,13 +949,15 @@ function saveHold(code){
 function watchBox(code){
   const s=BY[code]; const t=theo(s); const o0=watched(code); const o=o0?view(o0):null;
   let h='<div class="theo">';
-  h+='<div class="big num"><div><span>'+(t&&t.comp?'総合理論株価':'自動理論株価')+'</span><b>'+(t?fm(t.value,pd(s))+cu(s):'—')+'</b></div>'+
+  h+='<div class="big num"><div><span>'+(t&&t.comp?'主モデル理論株価':'自動理論株価')+'</span><b>'+(t?fm(t.value,pd(s))+cu(s):'—')+'</b></div>'+
      (o?'<div><span>採用理論株価</span><b>'+fm(o.theo,pd(s))+cu(s)+'</b></div><div><span>現在株価</span><b>'+fm(o.px,pd(s))+cu(s)+'</b></div><div><span>判定</span><b><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span></b></div>':
        (t&&isNum(s._px)?'<div><span>紙面株価との差</span><b>'+pc(s._px/t.value-1)+'</b></div>':''))+'</div>';
-  if(o&&o.vj) h+='<p class="small" style="margin:0">複数モデル判定：割高票 <b>'+o.vj.over+'</b>・中立票 <b>'+o.vj.neutral+'</b>・割安票 <b>'+o.vj.under+'</b> ／ 乖離中央値 <b>'+pc(o.vj.medianDev)+'</b></p>';
+  if(o&&o.vj) h+='<p class="small" style="margin:0">主モデル：<b>'+esc(o.vj.primaryModel)+'</b> ／ 主モデル乖離 <b>'+pc(o.vj.primaryDev)+'</b> ／ 参考モデル一致 <b>'+o.vj.agree+'/'+o.vj.total+'</b> ／ 確信度 <b>'+esc(o.vj.confidence)+'</b>'+(o.vj.fallback?'（主モデル算出不能のため代替）':'')+'</p>';
   if(t) h+='<p class="small" style="margin:0">'+(t.pick?'<span class="pill buy">割安×高還元</span> ':'')+'株主還元利回り <b class="num">'+pc(t.shy)+'</b>'+(s._shySrc?'（'+s._shySrc+'）':'')+'　黒字続きの銘柄の中央値 '+pc(SHYM[mkOf(s)])+'（'+(t.shyHi?'以上':'未満')+'）</p>';
   if(t) h+='<p class="small" style="margin:0">判定：<b>'+esc(t.verdict)+'</b>　業種内回帰の理論株価 <b class="num">'+(t.c2?fm(t.c2,pd(s))+cu(s):'—')+'</b></p>'+
-    (t.comp?'<div class="theo" style="margin-top:8px"><p class="small" style="margin:0"><b>銘柄別モデル</b>：算出可能なモデルだけで重みを再配分</p>'+t.comp.rows.map(z=>'<div class="vrow"><div><span>'+esc(z.name)+' '+Math.round(z.weight*100)+'%</span></div><b>'+fm(z.value,pd(s))+cu(s)+'</b></div>').join('')+(t.comp.fcfYears?'<p class="small" style="margin:0">DCFの基準FCFは取得できる直近'+t.comp.fcfYears+'期の平均。割引率8%・永久成長率1%・5年予測。</p>':'')+
+    (t.comp?'<div class="theo" style="margin-top:8px"><p class="small" style="margin:0"><b>銘柄別モデル</b>：主モデル1つを採用し、その他は参考値</p>'+t.comp.rows.map(z=>'<div class="vrow"><div><span>'+(z.name===t.comp.primaryName?'<span class="pill buy">主</span> ':'参考 ') +esc(z.name)+'</span></div><b>'+fm(z.value,pd(s))+cu(s)+'</b></div>').join('')+
+      (t.comp.sotp?'<p class="small" style="margin:0"><b>SOTP '+esc(t.comp.sotp.asOf)+'：</b>'+esc(t.comp.sotp.note)+'</p>':'')+
+      (t.comp.fcfYears?'<p class="small" style="margin:0">DCFの基準FCFは取得できる直近'+t.comp.fcfYears+'期の平均。割引率8%・永久成長率1%・5年予測。</p>':'')+
       (isNum(t.comp.payoutFV)?'<p class="small" style="margin:0">総還元モデル：持続可能な還元利回り '+pc(t.comp.sustainableShy)+'（配当＋自社株買い。自社株買い部分は年5%上限）を、要求収益率8%・長期成長1%で評価。</p>':'')+
       (isNum(t.comp.fcfeFV)?'<p class="small" style="margin:0">簡易FCFE：営業CF－設備投資を株主FCFの近似として評価（純借入は未取得のため除外）。</p>':'')+
       (isNum(t.comp.evaFV)?'<p class="small" style="margin:0">EVA：ROIC '+pc(t.comp.roic)+'、WACC 8%で算出した経済的付加価値を10年でゼロへ収束。</p>':'')+
