@@ -618,9 +618,10 @@ function theo(s){
   if(!(isNum(v)&&v>0))return null;
   const cheapA=isNum(x.px)&&x.px<v;
   const shy=s._shy, SM=SHYM[mkOf(s)], shyHi=isNum(shy)&&isNum(SM)&&shy>=SM;
-  const pick=x.good&&cheapA&&shyHi;
   const model=comp?comp.primaryName:'残余利益';
-  const verdict=!x.good?'対象外（赤字期あり・参考値）':cheapA?model+'で割安':model+'で割高';
+  const primaryEligible=model!=='残余利益'||x.good;
+  const pick=primaryEligible&&cheapA&&shyHi;
+  const verdict=!primaryEligible?'対象外（残余利益モデルの黒字条件未達・参考値）':cheapA?model+'で割安':model+'で割高';
   return {value:Math.round(v),ri:isNum(ri)?Math.round(ri):null,comp,r,c2:isNum(c2)?Math.round(c2):null,verdict,shy,shyHi,pick,...x};
 }
 // 業種内回帰：データを読み込んだときに1回だけ全銘柄で当てはめる
@@ -747,10 +748,11 @@ const memoBody=o=>String(o.memo||'').replace(/^保有\s*/,'');
 // 複数モデルの多数決＋乖離幅で売り側の評価を3段階にする。
 // 各モデルで現在株価が理論値より15%以上高ければ「割高票」、±15%以内は中立。
 // 最終判定は票数と乖離中央値を併用し、単一モデルだけで売り判定しない。
-function valuationJudge(s,px){
+function valuationJudge(s,px,adoptedTheo){
   const t=s?theo(s):null;
-  if(!t||!isNum(px)||px<=0||!isNum(t.value)||t.value<=0)return null;
-  const primaryDev=px/t.value-1;
+  const base=isNum(adoptedTheo)&&adoptedTheo>0?adoptedTheo:(t&&t.value);
+  if(!t||!isNum(px)||px<=0||!isNum(base)||base<=0)return null;
+  const primaryDev=px/base-1;
   let label='妥当';
   if(primaryDev>.30)label='割高';
   else if(primaryDev>.15)label='やや割高';
@@ -767,7 +769,8 @@ function valuationJudge(s,px){
   const ratio=refs.length?agree/refs.length:null;
   let confidence=refs.length?(ratio>=.67?'高':ratio>=.40?'中':'低'):'参考不足';
   if(t.comp&&t.comp.fallback)confidence='低';
-  return {label,primaryModel:t.comp?t.comp.primaryName:'残余利益',primaryDev,refs,agree,total:refs.length,confidence,fallback:!!(t.comp&&t.comp.fallback)};
+  const manual=isNum(adoptedTheo)&&Math.abs(adoptedTheo-t.value)>.0001;
+  return {label,primaryModel:manual?'手動上書き':(t.comp?t.comp.primaryName:'残余利益'),primaryDev,refs,agree,total:refs.length,confidence:manual?'手動':confidence,fallback:!!(t.comp&&t.comp.fallback)};
 }
 
 // 株価が監視シートで取れていないときは、四季報データ（J-Quantsの前営業日終値）で補って判定する
@@ -778,7 +781,7 @@ function view(o){
   const theo=isNum(o.ovr)?o.ovr:(live&&isNum(live.value)?live.value:o.theo);
   const sell=isNum(theo)&&isNum(o.mult)?theo*o.mult:null;
   const dev=isNum(px)&&isNum(theo)&&theo>0?px/theo-1:null;
-  const vj=isNum(px)&&s?valuationJudge(s,px):null;
+  const vj=isNum(px)&&s?valuationJudge(s,px,theo):null;
   const judge=!isNum(px)?'株価なし':vj?vj.label:!isNum(theo)?'理論株価なし':'妥当';
   return Object.assign({},o,{theo,px,pxSrc,dev,judge,sellLine:sell,vj});
 }
