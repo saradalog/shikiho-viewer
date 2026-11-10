@@ -419,8 +419,8 @@ function renderDetail(code){
 let SEC=null, SHY_MED=null;
 const clip=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));
 
-// 保有8銘柄は、四季報ビューアで取得できる既存データから銘柄別に評価モデルを組み合わせる。
-// 算出不能なモデルは除外し、残った重みを100%へ再配分する。
+// 保有8銘柄は銘柄ごとに最も適した主モデルを1つ採用し、その他のモデルは参考値として表示する。
+// 主モデルが算出不能な場合だけ参考モデルへフォールバックし、その場合は確信度を低として明示する。
 const MODEL_CONFIG={
   '8306':{primary:'残余利益',refs:['妥当PBR','総還元','業種PER']},
   '8316':{primary:'残余利益',refs:['妥当PBR','総還元','業種PER']},
@@ -810,7 +810,7 @@ function renderWatch(kind){
   h+='<div style="border-top:1px solid var(--rule)">'+rows.map(o=>{
     const pos=(isNum(o.px)&&isNum(o.theo)&&o.theo>0)?Math.max(0,Math.min(100,o.px/o.theo/ (2) *100)):null;
     return '<a class="wrow'+(kindOf(o.code)==='jp'?'':' wide')+'" href="#s-'+esc(o.code)+'"><span class="code">'+esc(o.code)+'</span><span class="nm">'+esc(o.name)+'</span><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span>'+
-    '<span class="sub num">'+satPill(BY[o.code])+(BY[o.code]&&BY[o.code]._sat&&isNum(BY[o.code]._sat.evop)?'<span>営業利益/EV <b>'+pc(BY[o.code]._sat.evop)+'</b></span>':'')+(o.judge==='買い検討'&&BY[o.code]&&BY[o.code]._pick?'<span class="pill buy">割安×高還元</span>':'')+(BY[o.code]&&isNum(BY[o.code]._shy)?'<span>還元 <b>'+pc(BY[o.code]._shy)+'</b></span>':'')+'<span>株価 <b>'+fm(o.px,pdC(o.code))+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,pdC(o.code))+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,pdC(o.code))+'</b></span></span>'+
+    '<span class="sub num">'+satPill(BY[o.code])+(BY[o.code]&&BY[o.code]._sat&&isNum(BY[o.code]._sat.evop)?'<span>営業利益/EV <b>'+pc(BY[o.code]._sat.evop)+'</b></span>':'')+(o.judge==='買い検討'&&BY[o.code]&&BY[o.code]._pick?'<span class="pill buy">割安×高還元</span>':'')+(BY[o.code]&&isNum(BY[o.code]._shy)?'<span>還元 <b>'+pc(BY[o.code]._shy)+'</b></span>':'')+'<span>株価 <b>'+fm(o.px,pdC(o.code))+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,pdC(o.code))+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span></span>'+
     (pos!=null?'<span class="bar" aria-hidden="true"><b style="left:0;width:50%;background:var(--buy-soft)"></b><i style="left:'+pos+'%"></i></span>':'')+
     (kind==='hold'?holdSub(o):'')+
     (memoBody(o)?'<span class="sub">'+esc(memoBody(o))+'</span>':'')+'</a>'}).join('')+'</div>';
@@ -959,7 +959,7 @@ function watchBox(code){
   if(t) h+='<p class="small" style="margin:0">'+(t.pick?'<span class="pill buy">割安×高還元</span> ':'')+'株主還元利回り <b class="num">'+pc(t.shy)+'</b>'+(s._shySrc?'（'+s._shySrc+'）':'')+'　黒字続きの銘柄の中央値 '+pc(SHYM[mkOf(s)])+'（'+(t.shyHi?'以上':'未満')+'）</p>';
   if(t) h+='<p class="small" style="margin:0">判定：<b>'+esc(t.verdict)+'</b>　業種内回帰の理論株価 <b class="num">'+(t.c2?fm(t.c2,pd(s))+cu(s):'—')+'</b></p>'+
     (t.comp?'<div class="theo" style="margin-top:8px"><p class="small" style="margin:0"><b>銘柄別モデル</b>：主モデル1つを採用し、その他は参考値</p>'+t.comp.rows.map(z=>'<div class="vrow"><div><span>'+(z.name===t.comp.primaryName?'<span class="pill buy">主</span> ':'参考 ') +esc(z.name)+'</span></div><b>'+fm(z.value,pd(s))+cu(s)+'</b></div>').join('')+
-      (t.comp.sotp?'<p class="small" style="margin:0"><b>SOTP '+esc(t.comp.sotp.asOf)+'：</b>'+esc(t.comp.sotp.note)+'</p>':'')+
+      (t.comp.sotp?'<p class="small" style="margin:0"><b>SOTP '+esc(t.comp.sotp.asOf)+'：</b>'+esc(t.comp.sotp.note)+'</p><details class="f"><summary>SOTP内訳</summary><div class="num">'+t.comp.sotp.rows.map(z=>'<span>'+esc(z.name)+'：'+(isNum(z.profitBn)?'利益 '+fm(z.profitBn,1)+'億円'+(isNum(z.multiple)?' × '+fm(z.multiple,1)+'倍':'')+' → ':'')+'価値 '+fm(z.valueBn,0)+'億円</span>').join('')+'</div></details>':'')+
       (t.comp.fcfYears?'<p class="small" style="margin:0">DCFの基準FCFは取得できる直近'+t.comp.fcfYears+'期の平均。割引率8%・永久成長率1%・5年予測。</p>':'')+
       (isNum(t.comp.payoutFV)?'<p class="small" style="margin:0">総還元モデル：持続可能な還元利回り '+pc(t.comp.sustainableShy)+'（配当＋自社株買い。自社株買い部分は年5%上限）を、要求収益率8%・長期成長1%で評価。</p>':'')+
       (isNum(t.comp.fcfeFV)?'<p class="small" style="margin:0">簡易FCFE：営業CF－設備投資を株主FCFの近似として評価（純借入は未取得のため除外）。</p>':'')+
