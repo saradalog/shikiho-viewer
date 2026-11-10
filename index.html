@@ -166,6 +166,21 @@ a.btn{text-decoration:none;display:inline-block}
 .story-card.kpi{border-left:4px solid var(--accent)}
 .story-price{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .story-price .story-card .v{font-size:18px;font-weight:700}
+.kpi-progress{display:grid;gap:8px}
+.kpi-progress-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.kpi-progress-head b{font-size:16px}
+.kpi-score{font-size:22px;font-weight:800;color:var(--accent)}
+.kpi-row{border:1px solid var(--rule);border-radius:8px;padding:10px 12px;background:var(--surface)}
+.kpi-row-top{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start}
+.kpi-row .name{font-weight:700}
+.kpi-row .src{font-size:11px;color:var(--muted)}
+.kpi-row .nums{font-size:13px;margin-top:4px}
+.kpi-row .pct{font-size:18px;font-weight:800}
+.kpi-track{height:7px;border-radius:999px;background:var(--rule);overflow:hidden;margin-top:7px}
+.kpi-track i{display:block;height:100%;background:var(--accent);border-radius:999px}
+.kpi-row.ok .kpi-track i{background:var(--up)}
+.kpi-row.warn .kpi-track i{background:#b07a19}
+.kpi-row.bad .kpi-track i{background:var(--down)}
 .story h3{margin:6px 0 0;font-size:15px}
 .story-actions{border-top:1px solid var(--rule);padding-top:10px}
 @media (max-width:520px){.story-grid,.story-price{grid-template-columns:1fr}.story-thesis{font-size:13.5px}.story-card{padding:10px}}
@@ -664,6 +679,94 @@ function holdSub(o){
   if(al) x+='<span class="sub small">'+esc(al.event)+'</span>';
   return x;
 }
+const KPI_TARGETS={
+  '8306':[
+    {name:'ROE',kind:'roe',target:.12,unit:'%',source:'中期経営計画',url:'https://www.mufg.jp/profile/strategy/index.html'},
+    {name:'親会社株主純利益',kind:'npfc',target:2700000,unit:'百万円',source:'2026年度会社目標',url:'https://www.mufg.jp/ir/report/disclosure/ir2026_ceomessage/index.html'}
+  ],
+  '8316':[
+    {name:'ROE',kind:'roe',target:.12,unit:'%',source:'新中期経営計画',url:'https://www.smfg.co.jp/english/investor/library/annual/fy2025e_f01_pdf/fy2025e_f01_00.pdf'},
+    {name:'親会社株主純利益',kind:'npfc',target:2000000,unit:'百万円',source:'2028年度中計目標',url:'https://www.smfg.co.jp/gr2026/strategy/cfo/'}
+  ],
+  '8058':[
+    {name:'ROE',kind:'roe',target:.12,unit:'%',source:'経営戦略2027',url:'https://www.mitsubishicorp.com/jp/ja/news/release/2025/20250403001.html'},
+    {name:'予想純利益 / 過去最高',kind:'np_peak',unit:'%',source:'過去実績',url:''}
+  ],
+  '6432':[
+    {name:'ROE',kind:'roe',target:.17,unit:'%',source:'2028年2月期目標',url:'https://www.takeuchi-mfg.co.jp/ir/upload_file/m004-m004_01/64-4Q_setsumei.pdf'},
+    {name:'当期純利益',kind:'npfc',target:37000,unit:'百万円',source:'2028年2月期目標',url:'https://www.takeuchi-mfg.co.jp/ir/upload_file/m004-m004_01/64-4Q_setsumei.pdf'}
+  ],
+  '8088':[
+    {name:'営業利益',kind:'opfc',target:65000,unit:'百万円',source:'PLAN27',url:'https://www.iwatani.co.jp/jpn/ir/vision/midterm-plan/'},
+    {name:'ROE',kind:'roe',target:.10,unit:'%',source:'PLAN27',url:'https://www.iwatani.co.jp/jpn/ir/vision/midterm-plan/'}
+  ],
+  '7203':[
+    {name:'ROE',kind:'roe',target:.20,unit:'%',source:'モビリティカンパニー長期目標',url:'https://global.toyota/pages/global_toyota/ir/financial-results/2026_4q_presentation_2_en.pdf'},
+    {name:'予想純利益 / 過去最高',kind:'np_peak',unit:'%',source:'過去実績',url:''}
+  ],
+  '8473':[
+    {name:'ROE',kind:'roe',target:.15,unit:'%',source:'2029年3月期中期ビジョン',url:'https://www.sbigroup.co.jp/investors/library/presentation/pdf/presen250602.pdf'},
+    {name:'連結税引前利益',kind:'pretax_actual',target:500000,unit:'百万円',source:'2029年3月期中期ビジョン',url:'https://www.sbigroup.co.jp/investors/library/presentation/pdf/presen250602.pdf'}
+  ],
+  '4755':[
+    {name:'非FinTech純有利子負債/EBITDA',kind:'static_inverse',current:6.5,target:6.0,unit:'倍',source:'FY2026会社目標（2025年末6.5倍）',url:'https://global.rakuten.com/corp/investors/assets/doc/documents/25Q4MAINPPT_E.pdf'},
+    {name:'予想営業利益 / 黒字定着目安',kind:'op_hyp',targetMargin:.05,unit:'%',source:'投資仮説（営業利益率5%）',url:''}
+  ]
+};
+function latestActual(s,colName){
+  const Y=n=>col('years',n),a=(s.y||[]).filter(r=>r[Y('区分')]==='実績'&&isNum(r[Y(colName)]));
+  return a.length?a[a.length-1][Y(colName)]:null;
+}
+function forecastVal(s,name){
+  const L=s.l||[],g=n=>L[col('list',n)]; const v=g(name); return isNum(v)?v:null;
+}
+function roeNow(s){
+  const F=(s.f||[])[0]||[],gf=n=>F[col('fin',n)];
+  return isNum(gf('ROE 予想'))?gf('ROE 予想'):isNum(gf('ROE 実績'))?gf('ROE 実績'):null;
+}
+function kpiCurrent(s,k){
+  if(k.kind==='roe') return roeNow(s);
+  if(k.kind==='npfc') return forecastVal(s,'今期予想純利益（百万円）');
+  if(k.kind==='opfc') return forecastVal(s,'今期予想営業利益（百万円）');
+  if(k.kind==='pretax_actual') return latestActual(s,'経常・税前利益（百万円）');
+  if(k.kind==='np_peak'){
+    const Y=n=>col('years',n),vals=(s.y||[]).filter(r=>r[Y('区分')]==='実績'&&isNum(r[Y('純利益（百万円）')])).map(r=>r[Y('純利益（百万円）')]);
+    const cur=forecastVal(s,'今期予想純利益（百万円）'); const peak=vals.length?Math.max(...vals):null;
+    return isNum(cur)&&isNum(peak)&&peak>0?cur/peak:null;
+  }
+  if(k.kind==='static_inverse') return k.current;
+  if(k.kind==='op_hyp'){
+    const op=forecastVal(s,'今期予想営業利益（百万円）'),sales=forecastVal(s,'今期予想売上高（百万円）');
+    return isNum(op)&&isNum(sales)&&sales>0?op/sales:null;
+  }
+  return null;
+}
+function kpiProgress(s,k){
+  const cur=kpiCurrent(s,k); if(!isNum(cur))return null;
+  if(k.kind==='np_peak')return {cur,target:1,pct:cur};
+  if(k.kind==='op_hyp')return {cur,target:k.targetMargin,pct:k.targetMargin>0?cur/k.targetMargin:null};
+  if(k.kind==='static_inverse')return {cur,target:k.target,pct:cur>0?k.target/cur:null};
+  return {cur,target:k.target,pct:k.target>0?cur/k.target:null};
+}
+function kpiFmt(v,k){
+  if(!isNum(v))return '—';
+  if(k.kind==='roe'||k.kind==='np_peak'||k.kind==='op_hyp'||k.unit==='%')return (v*100).toFixed(1)+'%';
+  if(k.unit==='倍')return v.toFixed(1)+'倍';
+  if(k.unit==='百万円')return v>=10000?(v/100).toLocaleString('ja-JP',{maximumFractionDigits:0})+'億円':v.toLocaleString('ja-JP')+'百万円';
+  return fm(v,1);
+}
+function kpiPanel(code){
+  const s=BY[code],ks=KPI_TARGETS[code]; if(!s||!ks)return '';
+  const rows=ks.map(k=>({k,p:kpiProgress(s,k)})).filter(x=>x.p&&isNum(x.p.pct));
+  if(!rows.length)return '';
+  const score=rows.reduce((a,x)=>a+Math.min(1,Math.max(0,x.p.pct)),0)/rows.length;
+  return '<div class="kpi-progress"><div class="kpi-progress-head"><b>数値KPI進捗</b><span class="kpi-score">'+Math.round(score*100)+'%</span></div>'+
+    rows.map(({k,p})=>{const pct=p.pct,cls=pct>=1?'ok':pct>=.8?'warn':'bad',w=Math.max(0,Math.min(100,pct*100));
+      return '<div class="kpi-row '+cls+'"><div class="kpi-row-top"><div><div class="name">'+esc(k.name)+'</div><div class="src">'+(k.url?'<a href="'+esc(k.url)+'" target="_blank" rel="noopener">'+esc(k.source)+'</a>':esc(k.source))+'</div></div><div class="pct">'+Math.round(pct*100)+'%</div></div>'+
+      '<div class="nums">現在 '+kpiFmt(p.cur,k)+' ／ 目標 '+kpiFmt(p.target,k)+'</div><div class="kpi-track"><i style="width:'+w+'%"></i></div></div>'}).join('')+
+    '<p class="small" style="margin:0">総合達成率は各KPIを100%上限で単純平均。目標の優先順位は「中期経営計画 → 会社予想 → 過去実績 → 投資仮説」。</p></div>';
+}
+
 function storyBox(code){
   const h=holdOf(code); const js=judgesOf(code).slice(0,12); if(!h&&!js.length) return '';
   let x='<div class="story">';
@@ -671,6 +774,7 @@ function storyBox(code){
     const p=posOf(watched(code)?view(watched(code)):{code,px:BY[code]&&BY[code]._px});
     x+='<div class="story-head"><h3>投資ストーリー</h3>'+(h.state?'<span class="pill '+stateCls(h.state)+'">'+esc(h.state)+'</span>':'')+'</div>'+
       (h.story?'<p class="story-thesis">'+esc(h.story)+'</p>':'<p class="small" style="margin:0">ストーリーはまだありません。スプレッドシートの「保有詳細」に書いてください。</p>')+
+      kpiPanel(code)+
       '<div class="story-grid">'+
         '<div class="story-card keep"><div class="k">維持する条件</div><div class="v">'+esc(h.keep||'—')+'</div></div>'+
         '<div class="story-card warn"><div class="k">要注意サイン</div><div class="v">'+esc(h.warn||'—')+'</div></div>'+
