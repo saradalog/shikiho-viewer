@@ -139,6 +139,15 @@ a.btn{text-decoration:none;display:inline-block}
 .theo .big span{font-size:11.5px;color:var(--muted)}
 .theo .big b{font-size:22px}
 .vrow{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--rule);font-size:13px}.vrow:last-child{border-bottom:0}
+.model-guide{display:grid;gap:12px}
+.model-card{border:1px solid var(--rule);border-radius:10px;background:var(--surface);padding:14px}
+.model-card h4{margin:0 0 6px;font-size:17px}
+.model-card p{margin:4px 0;line-height:1.65}
+.model-card .fit{font-weight:700}
+.model-card .weak{color:var(--muted)}
+.model-used{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.model-map{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media(max-width:520px){.model-map{grid-template-columns:1fr}.model-card{padding:12px}}
 .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px}
 .form label{display:grid;gap:3px;font-size:12px;color:var(--muted);min-width:0}
 .form input{min-width:0;width:100%}
@@ -205,7 +214,7 @@ html{-webkit-tap-highlight-color:transparent}
 <body>
 <header class="top"><div class="wrap">
   <div class="brand"><h1>四季報ビューア</h1><span id="brand-sub">日本株データ</span></div>
-  <nav class="tabs" aria-label="画面切り替え"><a href="#hold" id="t-hold">保有銘柄<span id="hcount" class="cnt"></span></a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
+  <nav class="tabs" aria-label="画面切り替え"><a href="#hold" id="t-hold">保有銘柄<span id="hcount" class="cnt"></span></a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#models" id="t-models">モデル解説</a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
   <div class="searchrow">
     <select id="mk" aria-label="市場"><option value="jp">日本株</option><option value="us">米国株</option><option value="hk">中国株（香港）</option></select>
     <input id="q" type="search" placeholder="コード・ティッカー・銘柄名で検索" autocomplete="off" aria-label="銘柄を検索">
@@ -218,6 +227,7 @@ const app=document.getElementById('app'), qEl=document.getElementById('q');
 let D=null, H=null, IDX={}, BY={}, shown=100;
 const flt={up:false,yld:false,num:false,g17:false,sat:false};
 const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+window.addEventListener('error',e=>{console.error(e.error||e.message);if(app&&/データを読み込んでいます/.test(app.textContent||''))app.innerHTML='<div class="msg err">画面の初期化でエラーが起きました。再読み込みしてください。</div><div class="actions"><a class="btn ghost" href="#models">モデル解説</a><a class="btn" href="#settings">設定</a></div>'});
 // 市場：日本株（J-Quants・毎日）／米国株 S&P500・中国株 香港（Yahoo Finance・毎月）。データは市場ごとに端末へ保存
 const DS={}; const MKN={jp:'日本株',us:'米国株',hk:'中国株（香港）'}; const IDB={jp:'data',us:'data-us',hk:'data-hk'};
 let MK=(()=>{const m=store.get('shk-mk','jp');return MKN[m]?m:'jp'})();
@@ -267,12 +277,12 @@ function prepOne(d,m){
   const G=d.g17||{}, SAT=(d.sat&&d.sat.rows)||[];
   for(const s of d.s){ s._g17=m==='jp'?(G[s.code]||''):''; s._sat=null; }
   if(m==='jp') for(const o of SAT){ if(BY[o.code]&&BY[o.code]._m==='jp') BY[o.code]._sat=o; }
-  fitC2(d.s);
+  try{fitC2(d.s)}catch(e){console.error('fitC2 error',m,e)}
   if(m!=='jp') evopForeign(d);
   // 黒字続きの銘柄の中での還元利回りの中央値（検証のK2：割安上位のうち還元利回りが中央値以上）
   const ys=d.s.map(x=>{const i=inputs(x);return i&&i.good&&isNum(x._shy)?x._shy:null}).filter(isNum).sort((a,b)=>a-b);
   SHYM[m]=ys.length?ys[Math.floor(ys.length/2)]:null;
-  for(const x of d.s){const t=theo(x); x._pick=!!(t&&t.pick);}
+  for(const x of d.s){const t=safeTheo(x); x._pick=!!(t&&t.pick);}
 }
 
 // 営業利益/EV（米国株・中国株）：日本株と同じ式。EV＝時価総額＋有利子負債−現金等、営業利益は直近の通期実績。
@@ -419,8 +429,7 @@ function renderDetail(code){
 let SEC=null, SHY_MED=null;
 const clip=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));
 
-// 保有8銘柄は銘柄ごとに最も適した主モデルを1つ採用し、その他のモデルは参考値として表示する。
-// 主モデルが算出不能な場合だけ参考モデルへフォールバックし、その場合は確信度を低として明示する。
+// 保有8銘柄は銘柄ごとに主モデルを1つ採用し、その他は参考値として表示する。
 const MODEL_CONFIG={
   '8306':{primary:'残余利益',refs:['妥当PBR','総還元','業種PER']},
   '8316':{primary:'残余利益',refs:['妥当PBR','総還元','業種PER']},
@@ -437,18 +446,17 @@ function actualOp(s){const Y=n=>col('years',n),a=(s.y||[]).filter(r=>r[Y('区分
 function salesGrowth(s){const Y=n=>col('years',n),a=(s.y||[]).filter(r=>r[Y('区分')]==='実績'&&isNum(r[Y('売上高（百万円）')])).map(r=>r[Y('売上高（百万円）')]);if(a.length<2||!(a[0]>0))return 0;const n=Math.min(5,a.length-1),x=a[a.length-1-n],y=a[a.length-1];return x>0&&y>0?clip(Math.pow(y/x,1/n)-1,0,.15):0}
 const FIN_CODES=new Set(['8306','8316','8473']);
 function isFinancialCode(code){return FIN_CODES.has(String(code||''))}
+
 function sectorPerMedian(ids){
   const a=(DS.jp&&DS.jp.s||[]).filter(p=>ids.includes(secOf(p))).map(p=>p._per).filter(v=>isNum(v)&&v>=4&&v<=40);
   return median(a);
 }
-function marketPerMedian(){
-  return median((DS.jp&&DS.jp.s||[]).map(p=>p._per).filter(v=>isNum(v)&&v>=4&&v<=40));
-}
+function marketPerMedian(){return median((DS.jp&&DS.jp.s||[]).map(p=>p._per).filter(v=>isNum(v)&&v>=4&&v<=40))}
 
-// 三菱商事SOTP。2026-11-04会社予想（純利益1.2兆円）をセグメント別に、対応する東証17業種の予想PER中央値で評価。
-// Other 1590億円のうち会社が明示した資本回収・一過性1200億円はPERを掛けず1倍で加算し、残り390億円だけ市場PERで評価する。
-const MC_SOTP_20261104={
-  asOf:'2026-11-04',totalBn:1200,oneTimeOtherBn:120,
+// 三菱商事SOTP：2026-11-04会社予想（純利益1.2兆円）のセグメント別見通しを使用。
+// 一過性利益はPERを掛けず、継続利益だけを対応業種PERで評価する。
+const MC_SOTP={
+  asOf:'2026-11-04',oneTimeOtherBn:120,
   segments:[
     {name:'Energy & Power Solution',profitBn:383,sectors:[1,10]},
     {name:'Materials Solution',profitBn:43,sectors:[3,6]},
@@ -457,47 +465,39 @@ const MC_SOTP_20261104={
     {name:'Mobility',profitBn:100,sectors:[5]},
     {name:'Food Industry',profitBn:65,sectors:[0]},
     {name:'Smart-Life Creation',profitBn:130,sectors:[9,13,15]}
-  ],
-  otherBn:159
+  ],otherBn:159
 };
 function sotp8058(x){
-  const shares=isNum(x.mcap)&&isNum(x.px)&&x.px>0?x.mcap/x.px:null;
-  if(!shares)return null;
+  const shares=isNum(x.mcap)&&isNum(x.px)&&x.px>0?x.mcap/x.px:null;if(!shares)return null;
   const scale=isNum(x.np)&&x.np>0?x.np/1200000:1;
   const rows=[];let equityBn=0;
-  for(const z of MC_SOTP_20261104.segments){
-    const per=sectorPerMedian(z.sectors),profit=z.profitBn*scale;
-    if(!isNum(per))continue;
-    const valueBn=profit*per; equityBn+=valueBn;
-    rows.push({name:z.name,profitBn:profit,multiple:per,valueBn});
+  for(const z of MC_SOTP.segments){
+    const per=sectorPerMedian(z.sectors),profit=z.profitBn*scale;if(!isNum(per))continue;
+    const valueBn=profit*per;equityBn+=valueBn;rows.push({name:z.name,profitBn:profit,multiple:per,valueBn});
   }
-  const recurringOther=(MC_SOTP_20261104.otherBn-MC_SOTP_20261104.oneTimeOtherBn)*scale;
-  const oneTime=MC_SOTP_20261104.oneTimeOtherBn*scale;
-  const marketPer=marketPerMedian();
-  if(isNum(marketPer)){const valueBn=recurringOther*marketPer;equityBn+=valueBn;rows.push({name:'Other（継続分）',profitBn:recurringOther,multiple:marketPer,valueBn})}
-  equityBn+=oneTime; rows.push({name:'資本回収・一過性',profitBn:oneTime,multiple:1,valueBn:oneTime});
-  return equityBn>0?{value:equityBn*1e9/shares,rows,asOf:MC_SOTP_20261104.asOf,note:'会社予想セグメント純利益×対応業種PER中央値。一過性利益は1倍。'}:null;
+  const recurring=(MC_SOTP.otherBn-MC_SOTP.oneTimeOtherBn)*scale,oneTime=MC_SOTP.oneTimeOtherBn*scale,mp=marketPerMedian();
+  if(isNum(mp)){const valueBn=recurring*mp;equityBn+=valueBn;rows.push({name:'Other（継続分）',profitBn:recurring,multiple:mp,valueBn})}
+  equityBn+=oneTime;rows.push({name:'資本回収・一過性',profitBn:oneTime,multiple:1,valueBn:oneTime});
+  return equityBn>0?{value:equityBn*1e9/shares,rows,asOf:MC_SOTP.asOf,note:'会社予想セグメント純利益×対応業種PER中央値。一過性利益は1倍。'}:null;
 }
 
-// 楽天SOTP。FinTech再編後の楽天銀行持分は、A種種類株式を普通株へ転換した場合の経済持分72.35%で時価評価。
-// Internetは2026年H1 Non-GAAP営業利益を年率換算・税引後70%として情報通信・サービスPER中央値で評価。
-// MobileはEBITDA黒字化済みでもNon-GAAP営業赤字のため主SOTPでは0評価。非FinTech純有利子負債は会社開示6.5倍×H1 EBITDA年率換算で近似。
-const RAKUTEN_SOTP_20260810={asOf:'2026-08-10',bankEconomicStake:.7235,internetOiH1Bn:44.3,nonFintechEbitdaH1Bn:60.7,netDebtEbitda:6.5};
+// 楽天SOTP：FinTech再編後の楽天銀行持分＋Internet－非FinTech純有利子負債。
+// Mobileは営業赤字のため0評価。負債はQ2時点6.2倍とQ1/Q2非FinTech EBITDAから保守的に近似。
+const RAKUTEN_SOTP={asOf:'2026-08-10',bankEqShares:293293023,bankDiscount:.90,internetH1OiBn:44.3,nonFintechEbitdaH1Bn:60.9,netDebtEbitda:6.2};
 function sotp4755(x){
-  const shares=isNum(x.mcap)&&isNum(x.px)&&x.px>0?x.mcap/x.px:null;
-  if(!shares)return null;
+  const shares=isNum(x.mcap)&&isNum(x.px)&&x.px>0?x.mcap/x.px:null;if(!shares)return null;
   const rows=[];let equityBn=0;
-  const bank=BY['5838'],bi=bank?inputs(bank):null;
-  if(bi&&isNum(bi.mcap)&&bi.mcap>0){
-    const valueBn=bi.mcap/1e9*RAKUTEN_SOTP_20260810.bankEconomicStake;
-    equityBn+=valueBn;rows.push({name:'FinTech（楽天銀行持分）',valueBn,multiple:null});
+  const bank=BY['5838'];
+  if(bank&&isNum(bank._px)&&bank._px>0){
+    const valueBn=bank._px*RAKUTEN_SOTP.bankEqShares/1e9*RAKUTEN_SOTP.bankDiscount;
+    equityBn+=valueBn;rows.push({name:'FinTech（楽天銀行持分・10%ディスカウント）',valueBn});
   }
-  const per=sectorPerMedian([9]),internetNi=RAKUTEN_SOTP_20260810.internetOiH1Bn*2*.70;
+  const per=sectorPerMedian([9]),internetNi=RAKUTEN_SOTP.internetH1OiBn*2*.70;
   if(isNum(per)){const valueBn=internetNi*per;equityBn+=valueBn;rows.push({name:'Internet Services',profitBn:internetNi,multiple:per,valueBn})}
-  rows.push({name:'Mobile（営業赤字のため保守的に0）',valueBn:0,multiple:null});
-  const netDebtBn=RAKUTEN_SOTP_20260810.nonFintechEbitdaH1Bn*2*RAKUTEN_SOTP_20260810.netDebtEbitda;
-  equityBn-=netDebtBn;rows.push({name:'非FinTech純有利子負債（控除）',valueBn:-netDebtBn,multiple:null});
-  return equityBn>0?{value:equityBn*1e9/shares,rows,asOf:RAKUTEN_SOTP_20260810.asOf,note:'楽天銀行経済持分＋Internet価値－非FinTech純有利子負債。Mobileは0評価。'}:null;
+  rows.push({name:'Mobile（営業赤字のため0評価）',valueBn:0});
+  const netDebtBn=RAKUTEN_SOTP.nonFintechEbitdaH1Bn*2*RAKUTEN_SOTP.netDebtEbitda;
+  equityBn-=netDebtBn;rows.push({name:'非FinTech純有利子負債（近似控除）',valueBn:-netDebtBn});
+  return equityBn>0?{value:equityBn*1e9/shares,rows,asOf:RAKUTEN_SOTP.asOf,note:'楽天銀行持分＋Internet価値－非FinTech純有利子負債。Mobileは0評価。'}:null;
 }
 
 function peerModels(s,x,r,rimV){
@@ -510,6 +510,7 @@ function peerModels(s,x,r,rimV){
   const ibd=gf('有利子負債'),cash=gf('現金等 当期'),dep=gf('減価償却 実績'),op=actualOp(s);
   const netDebt=(isNum(ibd)?ibd:0)-(isNum(cash)?cash:0);
   const eb=isNum(op)&&isNum(dep)?op+dep:null;
+  const evM=isNum(x.mcap)?x.mcap/1e6+netDebt:null;
   const peerEV=median(peers.map(p=>{
     const pi=inputs(p),PF=(p.f||[])[0]||[],pg=n=>PF[col('fin',n)],pop=actualOp(p),pdep=pg('減価償却 実績');
     if(!pi||!isNum(pi.mcap)||!isNum(pop)||!isNum(pdep)||pop+pdep<=0)return null;
@@ -526,6 +527,8 @@ function peerModels(s,x,r,rimV){
   }
   const evm=isNum(peerEV)&&isNum(eb)&&shares?(peerEV*eb-netDebt)*1e6/shares:null;
 
+  // 総還元モデル：配当＋自社株買いを1株あたり総還元額に直し、要求収益率8%・長期成長1%で資本還元。
+  // 単年の大型買い戻しを永久化しないため、自社株買い部分は年5%を上限にする。
   const divYield=isNum(s._yld)&&s._yld>=0?s._yld:0;
   const buybackYield=isNum(s._shy)?Math.max(0,s._shy-divYield):null;
   const sustainableShy=isNum(s._shy)?clip(divYield+Math.min(buybackYield,.05),0,.12):null;
@@ -533,6 +536,7 @@ function peerModels(s,x,r,rimV){
   const payoutReq=.08,payoutG=.01;
   const payoutFV=isNum(payoutPerShare)&&payoutPerShare>0?payoutPerShare/(payoutReq-payoutG):null;
 
+  // 簡易FCFE：営業CF－設備投資。純借入を取得できないため除外していることを明示する。
   const cfo=gf('営業CF 当期'),capex=gf('設備投資 実績');
   const fcfeBase=!isFinancialCode(s.code)&&isNum(cfo)&&isNum(capex)?cfo-capex:null;
   let fcfeFV=null;
@@ -543,24 +547,41 @@ function peerModels(s,x,r,rimV){
     if(pv>0)fcfeFV=pv*1e6/shares;
   }
 
+  // EVA：NOPAT－WACC×投下資本。超過利益は10年でゼロへ収束すると仮定。
   const eq=gf('自己資本');
   const invested=!isFinancialCode(s.code)&&isNum(eq)?eq+netDebt:null;
   const nopat=!isFinancialCode(s.code)&&isNum(op)?op*.70:null;
   let evaFV=null,eva0=null,roic=null;
   if(isNum(invested)&&invested>0&&isNum(nopat)&&shares){
-    const W=.08,N=10;roic=nopat/invested;eva0=nopat-W*invested;let pvEva=0;
-    for(let t=1;t<=N;t++)pvEva+=eva0*(N-t+1)/N/Math.pow(1+W,t);
-    const equityValue=invested+pvEva-netDebt;if(equityValue>0)evaFV=equityValue*1e6/shares;
+    const W=.08,N=10;
+    roic=nopat/invested;
+    eva0=nopat-W*invested;
+    let pvEva=0;
+    for(let t=1;t<=N;t++){
+      const eva=eva0*(N-t+1)/N;
+      pvEva+=eva/Math.pow(1+W,t);
+    }
+    const equityValue=invested+pvEva-netDebt;
+    if(equityValue>0)evaFV=equityValue*1e6/shares;
   }
 
+  // Reverse DCF：現在株価から、5年間に必要なFCF成長率を逆算。理論株価モデルではなく期待値の点検用。
   let reverseG=null,reverseBound=null;
   if(!isFinancialCode(s.code)&&isNum(base)&&base>0&&shares&&isNum(x.px)&&x.px>0){
     const R=.08,G=.01,N=5;
-    const priceAt=g=>{let pv=0;for(let t=1;t<=N;t++)pv+=base*Math.pow(1+g,t)/Math.pow(1+R,t);pv+=base*Math.pow(1+g,N)*(1+G)/(R-G)/Math.pow(1+R,N);const equity=pv-netDebt;return equity>0?equity*1e6/shares:null};
+    const priceAt=g=>{
+      let pv=0;for(let t=1;t<=N;t++)pv+=base*Math.pow(1+g,t)/Math.pow(1+R,t);
+      pv+=base*Math.pow(1+g,N)*(1+G)/(R-G)/Math.pow(1+R,N);
+      const equity=pv-netDebt;
+      return equity>0?equity*1e6/shares:null;
+    };
     let lo=-.20,hi=.40,plo=priceAt(lo),phi=priceAt(hi);
-    if(isNum(plo)&&x.px<plo)reverseBound='<-20%';
-    else if(isNum(phi)&&x.px>phi)reverseBound='>40%';
-    else if(isNum(plo)&&isNum(phi)){for(let k=0;k<50;k++){const mid=(lo+hi)/2,pm=priceAt(mid);if(!isNum(pm))break;if(pm<x.px)lo=mid;else hi=mid}reverseG=(lo+hi)/2}
+    if(isNum(plo)&&x.px<plo){reverseBound='<-20%'}
+    else if(isNum(phi)&&x.px>phi){reverseBound='>40%'}
+    else if(isNum(plo)&&isNum(phi)){
+      for(let k=0;k<50;k++){const mid=(lo+hi)/2,pm=priceAt(mid);if(!isNum(pm))break;if(pm<x.px)lo=mid;else hi=mid}
+      reverseG=(lo+hi)/2;
+    }
   }
 
   const sotp=s.code==='8058'?sotp8058(x):s.code==='4755'?sotp4755(x):null;
@@ -577,15 +598,12 @@ function peerModels(s,x,r,rimV){
     'EVA':evaFV
   };
   const order=[cfg.primary,...cfg.refs];
-  const rows=order.filter((k,i)=>order.indexOf(k)===i&&isNum(vals[k])&&vals[k]>0).map(k=>({name:k,value:vals[k],primary:k===cfg.primary}));
+  const rows=order.filter((k,i)=>order.indexOf(k)===i&&isNum(vals[k])&&vals[k]>0).map(k=>({name:k,value:vals[k]}));
   let primaryName=cfg.primary,primaryValue=vals[primaryName],fallback=false;
-  if(!(isNum(primaryValue)&&primaryValue>0)){
-    const alt=rows.find(z=>z.name!==cfg.primary);
-    if(!alt)return null;
-    primaryName=alt.name;primaryValue=alt.value;fallback=true;
-  }
+  if(!(isNum(primaryValue)&&primaryValue>0)){const alt=rows.find(z=>z.name!==cfg.primary);if(!alt)return null;primaryName=alt.name;primaryValue=alt.value;fallback=true}
   return {value:primaryValue,primaryName,requestedPrimary:cfg.primary,fallback,rows,peerEV,perMed,pbrMed,fcfYears:fcfs.length,
-    payoutFV,sustainableShy,payoutPerShare,payoutReq,payoutG,fcfeFV,fcfeBase,evaFV,eva0,roic,reverseG,reverseBound,sotp};
+    payoutFV,sustainableShy,payoutPerShare,payoutReq,payoutG,
+    fcfeFV,fcfeBase,evaFV,eva0,roic,reverseG,reverseBound,sotp};
 }
 function inputs(s){
   if(s._in!==undefined) return s._in;
@@ -594,36 +612,32 @@ function inputs(s){
   const act=(s.y||[]).filter(r=>r[col('years','区分')]==='実績'&&isNum(r[col('years','EPS（円）')])).map(r=>r[col('years','EPS（円）')]);
   let eps=g('今期予想EPS（円）'), epsSrc='今期予想EPS';
   if(!isNum(eps)&&act.length){eps=act[act.length-1];epsSrc='直近実績EPS'}
+  if(!isNum(bps)||bps<=0||!isNum(eps)) return s._in=null;
   const np=g('今期予想純利益（百万円）');
-  const mcList=g('時価総額（百万・株価通貨）');
-  const mcap=isNum(mcList)&&mcList>0?mcList*1e6:
-    (isNum(px)&&isNum(np)&&isNum(eps)&&eps!==0&&np/eps>0?px*np*1e6/eps:null);
+  const mcap=(isNum(px)&&isNum(np)&&eps!==0&&np/eps>0)?px*np*1e6/eps:null;
   const dps=g('今期配当上限（円）');
   const last=act.length?act[act.length-1]:null;
-  const hist=isNum(bps)&&bps>0?act.slice(-5).map(e=>e/bps):[];
+  const hist=act.slice(-5).map(e=>e/bps);
   let sd=null; if(hist.length>=2){const m=hist.reduce((a,b)=>a+b,0)/hist.length; sd=clip(Math.sqrt(hist.reduce((a,b)=>a+(b-m)*(b-m),0)/hist.length),0,0.3)}
-  const roe=isNum(bps)&&bps>0&&isNum(eps)?clip(eps/bps,-0.5,0.6):null;
-  return s._in={bps:isNum(bps)&&bps>0?bps:null,eps:isNum(eps)?eps:null,epsSrc,px,mcap,np,dps,roe,
-    payout:isNum(eps)&&eps>0&&isNum(dps)?clip(dps/eps,0,1):0.3,
-    good:act.length>=3&&act.slice(-3).every(e=>e>0)&&isNum(eps)&&eps>0,
-    g:isNum(last)&&last>0&&isNum(eps)?clip(eps/last-1,-0.5,1):null, sd};
+  return s._in={bps,eps,epsSrc,px,mcap,np,dps,roe:clip(eps/bps,-0.5,0.6),
+    payout:eps>0&&isNum(dps)?clip(dps/eps,0,1):0.3,
+    good:act.length>=3&&act.slice(-3).every(e=>e>0)&&eps>0,
+    g:isNum(last)&&last>0?clip(eps/last-1,-0.5,1):null, sd};
 }
 function rim(bps,roe0,r,payout){let v=bps,b=bps;for(let t=1;t<=10;t++){const rt=r+(roe0-r)*(10-t+1)/10;v+=(rt-r)*b/Math.pow(1+r,t);b*=1+rt*(1-payout)}return v}
 function theo(s){
   const x=inputs(s); if(!x) return null;
   const mY=yen(s,x.mcap); const r=!isNum(mY)?0.08:mY>=2.5e11?0.06:mY>=3e10?0.08:0.10;
-  const ri=isNum(x.bps)&&x.bps>0&&isNum(x.roe)?rim(x.bps,x.roe,r,x.payout):null;
-  const c2=s._c2, comp=peerModels(s,x,r,ri);
-  const v=comp&&comp.value>0?comp.value:(isNum(ri)&&ri>0?ri:null);
-  if(!(isNum(v)&&v>0))return null;
+  const ri=rim(x.bps,x.roe,r,x.payout); if(!(ri>0)) return null;
+  const c2=s._c2, comp=peerModels(s,x,r,ri), v=comp&&comp.value>0?comp.value:ri;
   const cheapA=isNum(x.px)&&x.px<v;
   const shy=s._shy, SM=SHYM[mkOf(s)], shyHi=isNum(shy)&&isNum(SM)&&shy>=SM;
+  const pick=x.good&&cheapA&&shyHi;
   const model=comp?comp.primaryName:'残余利益';
-  const primaryEligible=model!=='残余利益'||x.good;
-  const pick=primaryEligible&&cheapA&&shyHi;
-  const verdict=!primaryEligible?'対象外（残余利益モデルの黒字条件未達・参考値）':cheapA?model+'で割安':model+'で割高';
-  return {value:Math.round(v),ri:isNum(ri)?Math.round(ri):null,comp,r,c2:isNum(c2)?Math.round(c2):null,verdict,shy,shyHi,pick,...x};
+  const verdict=!x.good&&model==='残余利益'?'対象外（赤字期あり・参考値）':cheapA?model+'で割安':model+'で割高';
+  return {value:Math.round(v),ri:Math.round(ri),comp,r,c2:isNum(c2)?Math.round(c2):null,verdict,shy,shyHi,pick,...x};
 }
+function safeTheo(s){try{return theo(s)}catch(e){console.error('valuation error',s&&s.code,e);return null}}
 // 業種内回帰：データを読み込んだときに1回だけ全銘柄で当てはめる
 function solve(A,y){ // 正規方程式 (A'A)β=A'y をガウスの消去法で解く
   const k=A[0].length, M=[...Array(k)].map(()=>Array(k+1).fill(0));
@@ -634,7 +648,7 @@ function solve(A,y){ // 正規方程式 (A'A)β=A'y をガウスの消去法で�
 }
 function fitC2(list){
   const rows=[]; for(const s of list){ s._c2=null; const x=inputs(s);
-    if(!x||!isNum(x.px)||!isNum(x.mcap)||!isNum(x.bps)||x.bps<=0||x.g==null||x.sd==null) continue;
+    if(!x||!isNum(x.px)||!isNum(x.mcap)||x.g==null||x.sd==null) continue;
     const sec=SEC&&SEC.c[s.code]!=null?SEC.c[s.code]:'all';
     rows.push({s,sec,X:[1,clip(x.roe,-0.2,0.4),x.g,x.sd,Math.log(x.mcap)],y:Math.log(x.px/x.bps)}); }
   const groups={}; for(const r of rows){(groups[r.sec]=groups[r.sec]||[]).push(r)}
@@ -708,7 +722,7 @@ let FILLING=false;
 async function fillAuto(){
   if(FILLING||!D) return; FILLING=true;
   try{
-    const todo=W.rows.filter(o=>!isNum(o.auto)&&BY[o.code]).map(o=>({o,t:theo(BY[o.code])})).filter(x=>x.t&&isNum(x.t.value));
+    const todo=W.rows.filter(o=>!isNum(o.auto)&&BY[o.code]).map(o=>({o,t:safeTheo(BY[o.code])})).filter(x=>x.t&&isNum(x.t.value));
     let n=0;
     let fail=0;
     for(const {o,t} of todo){
@@ -726,15 +740,15 @@ async function act(label,action,body){
   catch(e){ W.busy=false; W.msg={t:label+'できたか確認できませんでした。'+errText(e),err:true}; await readWatch(); }
 }
 function watched(code){return W.rows.find(o=>o.code===code)}
-function addWatch(code){const s=BY[code];const t=theo(s); act('監視に追加','add',{code,name:s.name,auto:t?t.value:null});}
+function addWatch(code){const s=BY[code];const t=safeTheo(s); act('監視に追加','add',{code,name:s.name,auto:t?t.value:null});}
 function saveWatch(code){
-  const ov=document.getElementById('w-ovr').value.trim(), hd=document.getElementById('w-hold').checked, cur=watched(code);
+  const ov=document.getElementById('w-ovr').value.trim(), mu=document.getElementById('w-mult').value.trim(), hd=document.getElementById('w-hold').checked;
   const body=document.getElementById('w-memo').value.trim(); const me=hd?('保有'+(body?' '+body:'')):body;
-  const t=theo(BY[code]);
-  act('保存','save',{code,ovr:ov===''?null:pn(ov),mult:cur&&isNum(cur.mult)?cur.mult:1.2,memo:me,auto:t?t.value:null});
+  const t=safeTheo(BY[code]);
+  act('保存','save',{code,ovr:ov===''?null:pn(ov),mult:mu===''?1.2:pn(mu),memo:me,auto:t?t.value:null});
 }
 async function addHold(code){
-  if(W.busy) return; const s=BY[code]; const t=theo(s); W.busy=true; W.msg={t:'保有に追加中…'}; paintWatch();
+  if(W.busy) return; const s=BY[code]; const t=safeTheo(s); W.busy=true; W.msg={t:'保有に追加中…'}; paintWatch();
   try{ await api('add',{code,name:s.name,auto:t?t.value:null}); applyRows(await api('save',{code,ovr:null,mult:1.2,memo:'保有',auto:t?t.value:null})); W.msg={t:'保有に追加しました。'}; W.state='ok'; W.err=null; W.busy=false; paintWatch(); }
   catch(e){ W.busy=false; W.msg={t:'保有に追加できたか確認できませんでした。'+errText(e),err:true}; await readWatch(); }
 }
@@ -749,24 +763,14 @@ const memoBody=o=>String(o.memo||'').replace(/^保有\s*/,'');
 // 各モデルで現在株価が理論値より15%以上高ければ「割高票」、±15%以内は中立。
 // 最終判定は票数と乖離中央値を併用し、単一モデルだけで売り判定しない。
 function valuationJudge(s,px,adoptedTheo){
-  const t=s?theo(s):null;
-  const base=isNum(adoptedTheo)&&adoptedTheo>0?adoptedTheo:(t&&t.value);
+  const t=s?safeTheo(s):null,base=isNum(adoptedTheo)&&adoptedTheo>0?adoptedTheo:(t&&t.value);
   if(!t||!isNum(px)||px<=0||!isNum(base)||base<=0)return null;
   const primaryDev=px/base-1;
-  let label='妥当';
-  if(primaryDev>.30)label='割高';
-  else if(primaryDev>.15)label='やや割高';
-
+  let label='妥当'; if(primaryDev>.30)label='割高'; else if(primaryDev>.15)label='やや割高';
   const refs=[];
-  if(t.comp&&Array.isArray(t.comp.rows)){
-    t.comp.rows.filter(z=>z.name!==t.comp.primaryName).forEach(z=>{
-      if(isNum(z.value)&&z.value>0)refs.push({name:z.name,value:z.value,dev:px/z.value-1});
-    });
-  }
+  if(t.comp&&Array.isArray(t.comp.rows))t.comp.rows.filter(z=>z.name!==t.comp.primaryName).forEach(z=>{if(isNum(z.value)&&z.value>0)refs.push({name:z.name,value:z.value,dev:px/z.value-1})});
   if(isNum(t.c2)&&t.c2>0)refs.push({name:'業種内回帰',value:t.c2,dev:px/t.c2-1});
-  const primaryOver=primaryDev>.15;
-  const agree=refs.filter(z=>primaryOver?z.dev>.15:z.dev<=.15).length;
-  const ratio=refs.length?agree/refs.length:null;
+  const over=primaryDev>.15,agree=refs.filter(z=>over?z.dev>.15:z.dev<=.15).length,ratio=refs.length?agree/refs.length:null;
   let confidence=refs.length?(ratio>=.67?'高':ratio>=.40?'中':'低'):'参考不足';
   if(t.comp&&t.comp.fallback)confidence='低';
   const manual=isNum(adoptedTheo)&&Math.abs(adoptedTheo-t.value)>.0001;
@@ -777,13 +781,12 @@ function valuationJudge(s,px,adoptedTheo){
 function view(o){
   const s=BY[o.code]; let px=o.px, pxSrc='';
   if(!isNum(px)&&s&&isNum(s._px)){px=s._px;pxSrc='終値'}
-  const live=s?theo(s):null;
+  const live=s?safeTheo(s):null;
   const theo=isNum(o.ovr)?o.ovr:(live&&isNum(live.value)?live.value:o.theo);
-  const sell=isNum(theo)&&isNum(o.mult)?theo*o.mult:null;
   const dev=isNum(px)&&isNum(theo)&&theo>0?px/theo-1:null;
   const vj=isNum(px)&&s?valuationJudge(s,px,theo):null;
   const judge=!isNum(px)?'株価なし':vj?vj.label:!isNum(theo)?'理論株価なし':'妥当';
-  return Object.assign({},o,{theo,px,pxSrc,dev,judge,sellLine:sell,vj});
+  return Object.assign({},o,{theo,px,pxSrc,dev,judge,vj});
 }
 function paintWatch(){
   const nh=W.rows.filter(isHold).length, nw=W.rows.length-nh;
@@ -812,9 +815,10 @@ function renderWatch(kind){
   if(!rows.length&&W.state!=='loading') h+='<div class="empty">'+(kind==='hold'?'保有銘柄はまだありません。銘柄を開き「保有に追加」を押すか、監視銘柄で「保有中」にチェックして保存してください。':'監視銘柄はまだありません。上の検索から銘柄を開き「監視に追加」を押してください。')+'</div>';
   h+='<div style="border-top:1px solid var(--rule)">'+rows.map(o=>{
     const pos=(isNum(o.px)&&isNum(o.theo)&&o.theo>0)?Math.max(0,Math.min(100,o.px/o.theo/ (2) *100)):null;
+    const sl=(isNum(o.mult))?Math.min(100,o.mult/2*100):60;
     return '<a class="wrow'+(kindOf(o.code)==='jp'?'':' wide')+'" href="#s-'+esc(o.code)+'"><span class="code">'+esc(o.code)+'</span><span class="nm">'+esc(o.name)+'</span><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span>'+
-    '<span class="sub num">'+satPill(BY[o.code])+(BY[o.code]&&BY[o.code]._sat&&isNum(BY[o.code]._sat.evop)?'<span>営業利益/EV <b>'+pc(BY[o.code]._sat.evop)+'</b></span>':'')+(o.judge==='買い検討'&&BY[o.code]&&BY[o.code]._pick?'<span class="pill buy">割安×高還元</span>':'')+(BY[o.code]&&isNum(BY[o.code]._shy)?'<span>還元 <b>'+pc(BY[o.code]._shy)+'</b></span>':'')+'<span>株価 <b>'+fm(o.px,pdC(o.code))+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,pdC(o.code))+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span></span>'+
-    (pos!=null?'<span class="bar" aria-hidden="true"><b style="left:0;width:50%;background:var(--buy-soft)"></b><i style="left:'+pos+'%"></i></span>':'')+
+    '<span class="sub num">'+satPill(BY[o.code])+(BY[o.code]&&BY[o.code]._sat&&isNum(BY[o.code]._sat.evop)?'<span>営業利益/EV <b>'+pc(BY[o.code]._sat.evop)+'</b></span>':'')+(o.judge==='買い検討'&&BY[o.code]&&BY[o.code]._pick?'<span class="pill buy">割安×高還元</span>':'')+(BY[o.code]&&isNum(BY[o.code]._shy)?'<span>還元 <b>'+pc(BY[o.code]._shy)+'</b></span>':'')+'<span>株価 <b>'+fm(o.px,pdC(o.code))+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,pdC(o.code))+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,pdC(o.code))+'</b></span></span>'+
+    (pos!=null?'<span class="bar" aria-hidden="true"><b style="left:0;width:50%;background:var(--buy-soft)"></b><b style="left:'+sl+'%;right:0;background:var(--sell-soft)"></b><i style="left:'+pos+'%"></i></span>':'')+
     (kind==='hold'?holdSub(o):'')+
     (memoBody(o)?'<span class="sub">'+esc(memoBody(o))+'</span>':'')+'</a>'}).join('')+'</div>';
   h+='<p class="small">株価は株探（米国株・中国株はGoogleファイナンス）から取得。取れないときは「（終値）」としてJ-Quantsの前営業日終値で判定。判定は銘柄ごとの主モデルとの乖離で「割高・やや割高・妥当」に分類。参考モデルは判定を上書きせず、確信度の確認だけに使う。<a href="'+SHEET_URL+'">スプレッドシートを開く</a></p>';
@@ -953,7 +957,7 @@ function saveHold(code){
   act('株数・取得単価の保存','saveHold',{code,name:BY[code]?BY[code].name:'',shares:sh===''?null:pn(sh),cost:co===''?null:pn(co)});
 }
 function watchBox(code){
-  const s=BY[code]; const t=theo(s); const o0=watched(code); const o=o0?view(o0):null;
+  const s=BY[code]; const t=safeTheo(s); const o0=watched(code); const o=o0?view(o0):null;
   let h='<div class="theo">';
   h+='<div class="big num"><div><span>'+(t&&t.comp?'主モデル理論株価':'自動理論株価')+'</span><b>'+(t?fm(t.value,pd(s))+cu(s):'—')+'</b></div>'+
      (o?'<div><span>採用理論株価</span><b>'+fm(o.theo,pd(s))+cu(s)+'</b></div><div><span>現在株価</span><b>'+fm(o.px,pd(s))+cu(s)+'</b></div><div><span>判定</span><b><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span></b></div>':
@@ -961,9 +965,7 @@ function watchBox(code){
   if(o&&o.vj) h+='<p class="small" style="margin:0">主モデル：<b>'+esc(o.vj.primaryModel)+'</b> ／ 主モデル乖離 <b>'+pc(o.vj.primaryDev)+'</b> ／ 参考モデル一致 <b>'+o.vj.agree+'/'+o.vj.total+'</b> ／ 確信度 <b>'+esc(o.vj.confidence)+'</b>'+(o.vj.fallback?'（主モデル算出不能のため代替）':'')+'</p>';
   if(t) h+='<p class="small" style="margin:0">'+(t.pick?'<span class="pill buy">割安×高還元</span> ':'')+'株主還元利回り <b class="num">'+pc(t.shy)+'</b>'+(s._shySrc?'（'+s._shySrc+'）':'')+'　黒字続きの銘柄の中央値 '+pc(SHYM[mkOf(s)])+'（'+(t.shyHi?'以上':'未満')+'）</p>';
   if(t) h+='<p class="small" style="margin:0">判定：<b>'+esc(t.verdict)+'</b>　業種内回帰の理論株価 <b class="num">'+(t.c2?fm(t.c2,pd(s))+cu(s):'—')+'</b></p>'+
-    (t.comp?'<div class="theo" style="margin-top:8px"><p class="small" style="margin:0"><b>銘柄別モデル</b>：主モデル1つを採用し、その他は参考値</p>'+t.comp.rows.map(z=>'<div class="vrow"><div><span>'+(z.name===t.comp.primaryName?'<span class="pill buy">主</span> ':'参考 ') +esc(z.name)+'</span></div><b>'+fm(z.value,pd(s))+cu(s)+'</b></div>').join('')+
-      (t.comp.sotp?'<p class="small" style="margin:0"><b>SOTP '+esc(t.comp.sotp.asOf)+'：</b>'+esc(t.comp.sotp.note)+'</p><details class="f"><summary>SOTP内訳</summary><div class="num">'+t.comp.sotp.rows.map(z=>'<span>'+esc(z.name)+'：'+(isNum(z.profitBn)?'利益 '+fm(z.profitBn,1)+'億円'+(isNum(z.multiple)?' × '+fm(z.multiple,1)+'倍':'')+' → ':'')+'価値 '+fm(z.valueBn,0)+'億円</span>').join('')+'</div></details>':'')+
-      (t.comp.fcfYears?'<p class="small" style="margin:0">DCFの基準FCFは取得できる直近'+t.comp.fcfYears+'期の平均。割引率8%・永久成長率1%・5年予測。</p>':'')+
+    (t.comp?'<div class="theo" style="margin-top:8px"><p class="small" style="margin:0"><b>銘柄別モデル</b>：主モデル1つを採用し、その他は参考値</p>'+t.comp.rows.map(z=>'<div class="vrow"><div><span>'+(z.name===t.comp.primaryName?'<span class="pill buy">主</span> ':'参考 ')+esc(z.name)+'</span></div><b>'+fm(z.value,pd(s))+cu(s)+'</b></div>').join('')+(t.comp.sotp?'<p class="small" style="margin:0"><b>SOTP '+esc(t.comp.sotp.asOf)+'：</b>'+esc(t.comp.sotp.note)+'</p><details class="f"><summary>SOTP内訳</summary><div class="num">'+t.comp.sotp.rows.map(z=>'<span>'+esc(z.name)+'：'+(isNum(z.profitBn)?'利益 '+fm(z.profitBn,1)+'億円'+(isNum(z.multiple)?' × '+fm(z.multiple,1)+'倍':'')+' → ':'')+'価値 '+fm(z.valueBn,0)+'億円</span>').join('')+'</div></details>':'')+(t.comp.fcfYears?'<p class="small" style="margin:0">DCFの基準FCFは取得できる直近'+t.comp.fcfYears+'期の平均。割引率8%・永久成長率1%・5年予測。</p>':'')+
       (isNum(t.comp.payoutFV)?'<p class="small" style="margin:0">総還元モデル：持続可能な還元利回り '+pc(t.comp.sustainableShy)+'（配当＋自社株買い。自社株買い部分は年5%上限）を、要求収益率8%・長期成長1%で評価。</p>':'')+
       (isNum(t.comp.fcfeFV)?'<p class="small" style="margin:0">簡易FCFE：営業CF－設備投資を株主FCFの近似として評価（純借入は未取得のため除外）。</p>':'')+
       (isNum(t.comp.evaFV)?'<p class="small" style="margin:0">EVA：ROIC '+pc(t.comp.roic)+'、WACC 8%で算出した経済的付加価値を10年でゼロへ収束。</p>':'')+
@@ -977,14 +979,14 @@ function watchBox(code){
   if(W.state==='nocfg'){} 
   else if(!o) h+='<div class="actions"><button class="btn" data-act="add" data-code="'+esc(code)+'"'+(W.busy||W.state==='loading'?' disabled':'')+'>監視に追加</button><button class="btn ghost" data-act="addhold" data-code="'+esc(code)+'"'+(W.busy||W.state==='loading'?' disabled':'')+'>保有に追加</button></div>';
   else h+='<div class="form"><label for="w-ovr">理論株価の上書き（'+(mkOf(s)==='jp'?'円':esc(s._pc))+'、空欄なら自動）<input id="w-ovr" inputmode="decimal" value="'+(isNum(o.ovr)?o.ovr:'')+'" placeholder="'+(t?t.value:'')+'"></label>'+
-
+    '<label for="w-mult">売り倍率（理論株価の何倍で売り検討）<input id="w-mult" inputmode="decimal" value="'+(isNum(o.mult)?o.mult:1.2)+'"></label>'+
     '<label class="wide" for="w-memo">メモ（投資ストーリーなど）<input id="w-memo" value="'+esc(memoBody(o))+'"></label><label class="wide" style="display:flex;flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="w-hold" style="width:22px;height:22px;flex:none;margin:0"'+(isHold(o)?' checked':'')+'>保有中（「保有銘柄」タブに表示）</label></div>'+
     '<div class="actions"><button class="btn" data-act="save" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>保存</button><button class="btn danger" data-act="remove" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>監視から外す</button></div>';
   h+='</div>';
   if(o&&isHold(o)||holdOf(code)) h+='<div class="theo" style="margin-top:12px">'+storyBox(code)+'</div>';
   return h;
 }
-function setTab(t){for(const k of ['hold','watch','settings']){const el=document.getElementById('t-'+k); if(el) el.setAttribute('aria-current',t===k?'page':'false')}}
+function setTab(t){for(const k of ['hold','watch','models','settings']){const el=document.getElementById('t-'+k); if(el) el.setAttribute('aria-current',t===k?'page':'false')}}
 app.addEventListener('click',async e=>{const b=e.target.closest('button[data-act]'); if(!b) return; e.preventDefault(); const a=b.dataset.act, c=b.dataset.code;
   if(a==='reload'){W.msg=null;readWatch()} else if(a==='add') addWatch(c); else if(a==='addhold') addHold(c); else if(a==='save') saveWatch(c); else if(a==='savehold') saveHold(c);
   else if(a==='remove'){ if(b.dataset.confirm){removeWatch(c)} else {b.dataset.confirm='1';b.textContent='本当に外す（もう一度押す）'} } });
@@ -1003,6 +1005,31 @@ async function fetchData(m){
   catch(e){ S.busy=false; S.msg={t:'データを取得できませんでした。'+errText(e),err:true}; return false; }
   finally{ if(location.hash==='#settings') renderSettings(); }
 }
+function renderModels(){
+  setTab('models');
+  const map=[
+    ['8306 MUFG','残余利益'],['8316 SMFG','残余利益'],['8058 三菱商事','SOTP'],['6432 竹内製作所','DCF'],
+    ['8088 岩谷産業','DCF'],['7203 トヨタ','DCF'],['8473 SBI HD','残余利益'],['4755 楽天グループ','SOTP']
+  ];
+  const models=[
+    {name:'SOTP（事業別価値の合計）',simple:'会社を事業ごとに分解し、それぞれに合う評価方法で値段を付けて最後に合計する。',fit:'総合商社・持株会社・複合企業・事業構成が大きく違う会社。',weak:'各事業の利益予想や倍率の置き方で結果が変わる。セグメント開示が粗い会社には不向き。',used:'三菱商事・楽天グループ'},
+    {name:'残余利益モデル',simple:'今ある純資産に、将来「資本コストを上回って稼ぐ利益」を足して株価を出す。',fit:'銀行・保険・金融など、純資産とROEが企業価値に直結しやすい業種。',weak:'BPSやROEが価値を表しにくい無形資産型企業には弱い。',used:'MUFG・SMFG・SBI HD'},
+    {name:'DCF',simple:'将来生むフリーキャッシュフローを現在価値に割り引いて企業価値を出す。',fit:'製造業・機械・自動車・ガス・インフラなど、キャッシュフローを比較的予測しやすい非金融企業。',weak:'成長率・割引率・永久成長率に敏感。赤字企業やCFが激しく振れる会社では不安定。',used:'竹内製作所・岩谷産業・トヨタ'},
+    {name:'EVA',simple:'本業の利益から「投下した資本に必要なコスト」を引き、本当に価値を増やした分を評価する。',fit:'製造業・素材・化学・商社など、投下資本とROICが重要な会社。',weak:'投下資本やWACCの推定に誤差がある。金融業には基本的に使わない。',used:'参考モデル'},
+    {name:'簡易FCFE',simple:'株主に最終的に残る現金をもとに株価を出す。今のアプリでは営業CF−設備投資で近似する。',fit:'借入構造が安定した非金融企業、製造業・インフラなど。',weak:'純借入を直接反映していない簡易版なので、借入変動が大きい会社では参考程度。',used:'参考モデル'},
+    {name:'総還元モデル',simple:'配当と自社株買いを「株主に返したお金」としてまとめ、その持続可能額から株価を逆算する。',fit:'成熟企業・銀行・商社・大型株など、配当と自社株買いが継続的な会社。',weak:'一時的な大型自社株買いを永久に続く前提にすると過大評価になるため、自社株買い部分は上限を置く。',used:'参考モデル'},
+    {name:'EV/EBITDA',simple:'会社全体の値段が、本業のキャッシュ利益の何年分かを同業他社と比較する。',fit:'設備産業・製造業・通信・資源など、減価償却が大きい非金融企業。',weak:'設備投資額や成長性の違いを直接反映しない。銀行には不向き。',used:'参考モデル'},
+    {name:'PER',simple:'1株利益の何年分まで株価として払われているかを同業他社と比べる。',fit:'利益が安定し、同業比較がしやすい幅広い企業。',weak:'赤字企業では使えず、一時利益・景気循環でEPSが振れる会社では誤解しやすい。',used:'参考モデル'},
+    {name:'PBR・妥当PBR',simple:'純資産に対して何倍の株価が妥当かを見る。妥当PBRはROEと資本コストから計算する。',fit:'銀行・保険・金融・資産保有型企業。',weak:'ブランドやソフトウェアなど簿価に出ない資産が大きい企業には弱い。',used:'金融株の参考モデル'},
+    {name:'業種内回帰',simple:'同じ業種の株価がROE・成長率・企業規模などをどう評価しているかを統計的に当てはめる。',fit:'同業企業が十分多く、比較可能性が高い業種。',weak:'業界全体が割高・割安でも、その市場価格を基準にしてしまう。',used:'参考・異常値チェック'},
+    {name:'Reverse DCF',simple:'「今の株価になるには、将来FCFが毎年何%伸びる必要があるか」を逆算する。',fit:'ほぼ全ての非金融企業。特に高成長株や割高に見える株の期待値チェック。',weak:'理論株価そのものではない。必要成長率が現実的かを判断するための補助指標。',used:'期待値チェック'}
+  ];
+  let h='<section><h3>理論株価モデル</h3><div class="theo"><p style="margin:0">このアプリは、複数モデルを平均せず、<b>銘柄ごとに一番適した主モデルを1つ採用</b>します。その他のモデルは参考値と確信度の確認に使います。</p><div class="model-map">'+map.map(x=>'<div class="story-card"><div class="k">'+esc(x[0])+'</div><div class="v"><b>'+esc(x[1])+'</b></div></div>').join('')+'</div></div></section>';
+  h+='<section><h3>モデルの意味と向いている業種</h3><div class="model-guide">'+models.map(m=>'<div class="model-card"><h4>'+esc(m.name)+'</h4><p>'+esc(m.simple)+'</p><p class="fit">向いている：'+esc(m.fit)+'</p><p class="weak">注意点：'+esc(m.weak)+'</p><div class="model-used"><span class="pill hold">'+esc(m.used)+'</span></div></div>').join('')+'</div></section>';
+  h+='<p class="small">判定基準：主モデル理論株価より現在株価が30%超高ければ「割高」、15%超なら「やや割高」、それ以下は「妥当」。参考モデルは判定を変更せず、確信度だけに使います。</p>';
+  app.innerHTML=h; window.scrollTo(0,0);
+}
+
 function renderSettings(){
   setTab('settings');
   const c=cfg()||{};
@@ -1053,11 +1080,14 @@ async function boot(){
   try{ SEC=await (await fetch('sectors.json')).json(); }catch(e){ SEC=null; }
   brand();
   for(const m of ['jp','us','hk']){ try{ const v=await idbGet(IDB[m]); if(v&&v.s&&(v.market||'jp')===m) DS[m]=v; }catch(e){} }
-  if(DS[MK]){ prep(); route(); readWatch(); autoRefresh(); if(MK!=='jp'&&!DS.jp&&cfg()) fetchData('jp'); return; }
+  if(DS[MK]){
+    try{prep()}catch(e){console.error('prep error',e);app.innerHTML='<div class="msg err">データ初期化でエラーが起きました。画面を再読み込みしてください。直らない場合は設定からデータを取り込み直してください。</div><div class="actions"><a class="btn ghost" href="#models">モデル解説</a><a class="btn" href="#settings">設定</a></div>';return}
+    route(); readWatch(); autoRefresh(); if(MK!=='jp'&&!DS.jp&&cfg()) fetchData('jp'); return;
+  }
   if(cfg()){ app.innerHTML='<div class="loading">'+MKN[MK]+'のデータを取得しています…（初回は20〜40秒ほどかかります）</div>'; if(await fetchData()){route();readWatch();if(MK!=='jp'&&!DS.jp) fetchData('jp');return} }
   if(location.hash!=='#settings') location.hash='settings'; else renderSettings();
 }
-function route(){ if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#watch'){renderWatch('watch');return} if(location.hash==='#hold'){renderWatch('hold');return} if(location.hash==='#search'){renderSearch();return} const m=location.hash.match(/^#s-([0-9A-Za-z.\-]+)$/); if(m){renderDetail(m[1].toUpperCase());return} location.hash='hold'; }
+function route(){ if(location.hash==='#models'){renderModels();return} if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#watch'){renderWatch('watch');return} if(location.hash==='#hold'){renderWatch('hold');return} if(location.hash==='#search'){renderSearch();return} const m=location.hash.match(/^#s-([0-9A-Za-z.\-]+)$/); if(m){renderDetail(m[1].toUpperCase());return} location.hash='hold'; }
 let t; qEl.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{if(qEl.value.trim()){if(location.hash!=='#search')location.hash='search';else renderSearch()}else location.hash='hold'},120)});
 qEl.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=qEl.value.trim().toUpperCase().normalize('NFKC');const hk=v.padStart(4,'0')+'.HK';const exact=BY[v]?v:BY[hk]?hk:null;if(exact){location.hash='s-'+exact;return}const m=D.s.find(s=>s._key.includes(v.toLowerCase()));if(m)location.hash='s-'+m.code}});
 mkEl.addEventListener('change',async()=>{ MK=mkEl.value; store.set('shk-mk',MK); D=DS[MK]||null; H=D&&D.h; brand(); shown=100; qEl.value='';
