@@ -424,17 +424,20 @@ const clip=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));
 const COMPOSITE_WEIGHTS={
   '8306':{'残余利益':.60,'妥当PBR':.30,'業種PER':.10,'総還元':.10},
   '8316':{'残余利益':.60,'妥当PBR':.30,'業種PER':.10,'総還元':.10},
-  '8058':{'残余利益':.25,'DCF':.30,'業種EV/EBITDA':.20,'業種PER':.15,'業種PBR':.10,'総還元':.10},
-  '6432':{'DCF':.60,'業種EV/EBITDA':.25,'業種PER':.15,'総還元':.10},
-  '8088':{'DCF':.45,'業種EV/EBITDA':.35,'業種PER':.10,'業種PBR':.10,'総還元':.10},
-  '7203':{'DCF':.50,'業種EV/EBITDA':.30,'業種PER':.20,'総還元':.10},
+  '8058':{'残余利益':.25,'DCF':.30,'業種EV/EBITDA':.20,'業種PER':.15,'業種PBR':.10,'総還元':.10,'簡易FCFE':.08,'EVA':.08},
+  '6432':{'DCF':.60,'業種EV/EBITDA':.25,'業種PER':.15,'総還元':.10,'簡易FCFE':.08,'EVA':.08},
+  '8088':{'DCF':.45,'業種EV/EBITDA':.35,'業種PER':.10,'業種PBR':.10,'総還元':.10,'簡易FCFE':.08,'EVA':.08},
+  '7203':{'DCF':.50,'業種EV/EBITDA':.30,'業種PER':.20,'総還元':.10,'簡易FCFE':.08,'EVA':.08},
   '8473':{'残余利益':.50,'妥当PBR':.35,'業種PER':.15,'総還元':.10},
-  '4755':{'残余利益':.20,'DCF':.15,'業種EV/EBITDA':.35,'業種PER':.15,'業種PBR':.15,'総還元':.10}
+  '4755':{'残余利益':.20,'DCF':.15,'業種EV/EBITDA':.35,'業種PER':.15,'業種PBR':.15,'総還元':.10,'簡易FCFE':.08,'EVA':.08}
 };
 function median(a){const x=a.filter(isNum).sort((p,q)=>p-q);if(!x.length)return null;const n=x.length;return n%2?x[(n-1)/2]:(x[n/2-1]+x[n/2])/2}
 function secOf(s){return SEC&&SEC.c[s.code]!=null?SEC.c[s.code]:null}
 function actualOp(s){const Y=n=>col('years',n),a=(s.y||[]).filter(r=>r[Y('区分')]==='実績'&&isNum(r[Y('営業利益（百万円）')]));return a.length?a[a.length-1][Y('営業利益（百万円）')]:null}
 function salesGrowth(s){const Y=n=>col('years',n),a=(s.y||[]).filter(r=>r[Y('区分')]==='実績'&&isNum(r[Y('売上高（百万円）')])).map(r=>r[Y('売上高（百万円）')]);if(a.length<2||!(a[0]>0))return 0;const n=Math.min(5,a.length-1),x=a[a.length-1-n],y=a[a.length-1];return x>0&&y>0?clip(Math.pow(y/x,1/n)-1,0,.15):0}
+const FIN_CODES=new Set(['8306','8316','8473']);
+function isFinancialCode(code){return FIN_CODES.has(String(code||''))}
+
 function peerModels(s,x,r,rimV){
   const w=COMPOSITE_WEIGHTS[s.code];if(!w||mkOf(s)!=='jp')return null;
   const F=(s.f||[])[0]||[],gf=n=>F[col('fin',n)],sec=secOf(s);
@@ -471,6 +474,54 @@ function peerModels(s,x,r,rimV){
   const payoutReq=.08,payoutG=.01;
   const payoutFV=isNum(payoutPerShare)&&payoutPerShare>0?payoutPerShare/(payoutReq-payoutG):null;
 
+  // 簡易FCFE：営業CF－設備投資。純借入を取得できないため除外していることを明示する。
+  const cfo=gf('営業CF 当期'),capex=gf('設備投資 実績');
+  const fcfeBase=!isFinancialCode(s.code)&&isNum(cfo)&&isNum(capex)?cfo-capex:null;
+  let fcfeFV=null;
+  if(isNum(fcfeBase)&&fcfeBase>0&&shares){
+    const R=.08,G=.01,N=5,gr=salesGrowth(s);
+    let pv=0;for(let t=1;t<=N;t++)pv+=fcfeBase*Math.pow(1+gr,t)/Math.pow(1+R,t);
+    pv+=fcfeBase*Math.pow(1+gr,N)*(1+G)/(R-G)/Math.pow(1+R,N);
+    if(pv>0)fcfeFV=pv*1e6/shares;
+  }
+
+  // EVA：NOPAT－WACC×投下資本。超過利益は10年でゼロへ収束すると仮定。
+  const eq=gf('自己資本');
+  const invested=!isFinancialCode(s.code)&&isNum(eq)?eq+netDebt:null;
+  const nopat=!isFinancialCode(s.code)&&isNum(op)?op*.70:null;
+  let evaFV=null,eva0=null,roic=null;
+  if(isNum(invested)&&invested>0&&isNum(nopat)&&shares){
+    const W=.08,N=10;
+    roic=nopat/invested;
+    eva0=nopat-W*invested;
+    let pvEva=0;
+    for(let t=1;t<=N;t++){
+      const eva=eva0*(N-t+1)/N;
+      pvEva+=eva/Math.pow(1+W,t);
+    }
+    const equityValue=invested+pvEva-netDebt;
+    if(equityValue>0)evaFV=equityValue*1e6/shares;
+  }
+
+  // Reverse DCF：現在株価から、5年間に必要なFCF成長率を逆算。理論株価モデルではなく期待値の点検用。
+  let reverseG=null,reverseBound=null;
+  if(!isFinancialCode(s.code)&&isNum(base)&&base>0&&shares&&isNum(x.px)&&x.px>0){
+    const R=.08,G=.01,N=5;
+    const priceAt=g=>{
+      let pv=0;for(let t=1;t<=N;t++)pv+=base*Math.pow(1+g,t)/Math.pow(1+R,t);
+      pv+=base*Math.pow(1+g,N)*(1+G)/(R-G)/Math.pow(1+R,N);
+      const equity=pv-netDebt;
+      return equity>0?equity*1e6/shares:null;
+    };
+    let lo=-.20,hi=.40,plo=priceAt(lo),phi=priceAt(hi);
+    if(isNum(plo)&&x.px<plo){reverseBound='<-20%'}
+    else if(isNum(phi)&&x.px>phi){reverseBound='>40%'}
+    else if(isNum(plo)&&isNum(phi)){
+      for(let k=0;k<50;k++){const mid=(lo+hi)/2,pm=priceAt(mid);if(!isNum(pm))break;if(pm<x.px)lo=mid;else hi=mid}
+      reverseG=(lo+hi)/2;
+    }
+  }
+
   const vals={
     '残余利益':rimV,
     '妥当PBR':isNum(x.roe)&&r>0?x.bps*(x.roe/r):null,
@@ -478,13 +529,16 @@ function peerModels(s,x,r,rimV){
     '業種PBR':isNum(pbrMed)?pbrMed*x.bps:null,
     '業種EV/EBITDA':evm,
     'DCF':dcf,
-    '総還元':payoutFV
+    '総還元':payoutFV,
+    '簡易FCFE':fcfeFV,
+    'EVA':evaFV
   };
   const used=Object.entries(w).filter(([k])=>isNum(vals[k])&&vals[k]>0),tw=used.reduce((a,[,z])=>a+z,0);
   if(!tw)return null;
   const value=used.reduce((a,[k,z])=>a+vals[k]*z,0)/tw;
   return {value,rows:used.map(([k,z])=>({name:k,value:vals[k],weight:z/tw})),peerEV,perMed,pbrMed,fcfYears:fcfs.length,
-    payoutFV,sustainableShy,payoutPerShare,payoutReq,payoutG};
+    payoutFV,sustainableShy,payoutPerShare,payoutReq,payoutG,
+    fcfeFV,fcfeBase,evaFV,eva0,roic,reverseG,reverseBound};
 }
 function inputs(s){
   if(s._in!==undefined) return s._in;
@@ -851,7 +905,10 @@ function watchBox(code){
   if(t) h+='<p class="small" style="margin:0">'+(t.pick?'<span class="pill buy">割安×高還元</span> ':'')+'株主還元利回り <b class="num">'+pc(t.shy)+'</b>'+(s._shySrc?'（'+s._shySrc+'）':'')+'　黒字続きの銘柄の中央値 '+pc(SHYM[mkOf(s)])+'（'+(t.shyHi?'以上':'未満')+'）</p>';
   if(t) h+='<p class="small" style="margin:0">判定：<b>'+esc(t.verdict)+'</b>　業種内回帰の理論株価 <b class="num">'+(t.c2?fm(t.c2,pd(s))+cu(s):'—')+'</b></p>'+
     (t.comp?'<div class="theo" style="margin-top:8px"><p class="small" style="margin:0"><b>銘柄別モデル</b>：算出可能なモデルだけで重みを再配分</p>'+t.comp.rows.map(z=>'<div class="vrow"><div><span>'+esc(z.name)+' '+Math.round(z.weight*100)+'%</span></div><b>'+fm(z.value,pd(s))+cu(s)+'</b></div>').join('')+(t.comp.fcfYears?'<p class="small" style="margin:0">DCFの基準FCFは取得できる直近'+t.comp.fcfYears+'期の平均。割引率8%・永久成長率1%・5年予測。</p>':'')+
-      (isNum(t.comp.payoutFV)?'<p class="small" style="margin:0">総還元モデル：持続可能な還元利回り '+pc(t.comp.sustainableShy)+'（配当＋自社株買い。自社株買い部分は年5%上限）を、要求収益率8%・長期成長1%で評価。</p>':'')+'</div>':'')+
+      (isNum(t.comp.payoutFV)?'<p class="small" style="margin:0">総還元モデル：持続可能な還元利回り '+pc(t.comp.sustainableShy)+'（配当＋自社株買い。自社株買い部分は年5%上限）を、要求収益率8%・長期成長1%で評価。</p>':'')+
+      (isNum(t.comp.fcfeFV)?'<p class="small" style="margin:0">簡易FCFE：営業CF－設備投資を株主FCFの近似として評価（純借入は未取得のため除外）。</p>':'')+
+      (isNum(t.comp.evaFV)?'<p class="small" style="margin:0">EVA：ROIC '+pc(t.comp.roic)+'、WACC 8%で算出した経済的付加価値を10年でゼロへ収束。</p>':'')+
+      (isNum(t.comp.reverseG)||t.comp.reverseBound?'<p class="small" style="margin:0"><b>Reverse DCF：</b>現在株価が織り込む5年間のFCF成長率 '+(isNum(t.comp.reverseG)?pc(t.comp.reverseG):esc(t.comp.reverseBound))+'（割引率8%・永久成長率1%）。</p>':'')+'</div>':'')+
     '<details class="f"><summary>計算の内訳</summary><div class="num">'+
     '<span>残余利益：1株純資産 '+fm(t.bps,2)+cu(s)+' ＋ 10年分の超過利益（'+t.epsSrc+' '+fm(t.eps,2)+cu(s)+' → ROE '+pc(t.roe)+'、資本コスト '+pc(t.r,0)+'、配当性向 '+pc(t.payout,0)+'）</span>'+
     '<span>資本コスト：時価総額 '+(isNum(yen(s,t.mcap))?fm(yen(s,t.mcap)/1e8,0)+'億円':'不明')+(mkOf(s)!=='jp'?'（円換算）':'')+'（2,500億円以上6%・300億円以上8%・それ未満10%）</span>'+(mkOf(s)!=='jp'?'<span>1株純資産・EPSは財務の通貨（'+esc(s._fc||'')+'）を株価の通貨に直して計算</span>':'')+'<span>業種内回帰：'+esc(SEC&&SEC.c[s.code]!=null?SEC.names[SEC.c[s.code]]:(mkOf(s)==='jp'?'業種不明':MKN[mkOf(s)]+'の全銘柄'))+'の銘柄で、ROE・予想EPS伸び率'+(t.g!=null?'（'+pc(t.g)+'）':'')+'・ROEのぶれ・規模からPBRを推定</span>'+
