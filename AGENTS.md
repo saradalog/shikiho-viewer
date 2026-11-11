@@ -66,3 +66,8 @@
 - 画面変更時は必ず `sw.js` の `shikiho-shell-vN` を+1する。2026-11-11時点の最新はv35。
 - 2026-11-11：保有銘柄の「投資ストーリー」の中に「売上ドライバー」（`driverBox`）を追加。監視シートのタブ「売上ドライバー」を Apps Script の `list` が `drivers`（コード → 項目の配列）として返し、画面は表示するだけ（計算しない）。K列（最新値）が入っている項目は「更新」と表示し、無ければ基準値（G列）を出す。`drivers` が届かない（Apps Script が古い）ときは何も表示しない。キャッシュ版は v34。
 - 売上ドライバーの色分け：N列の判定（`dir`）が「上振れ」＝緑、「下振れ」＝赤、「想定どおり」＝灰色。画面は判定をそのまま色にするだけで、数字を比べて自分で判定しない（期間や費用項目の向きを取り違えるため）。判定が無いときは「更新」とだけ表示。基準の数字には時点も付ける。
+
+## 同居している別アプリ：`leadlag/`（リードラグ手帳）
+
+- `leadlag/` は日米業種リードラグ戦略のアプリ（今日の注文・窓チェック・成績・損益の入力・モデル比較）。https://saradalog.github.io/shikiho-viewer/leadlag/ で配信。四季報ビューアとは独立していて、`index.html`・`sw.js`（`leadlag-shell-vN`）・`manifest.webmanifest`・`icons/` を自前で持つ。直したら `leadlag/sw.js` の版を+1する（ルートの `sw.js` は上げなくてよい）。
+- データは「米国シグナル」スプレッドシートに付けた別の Apps Script（非公開 `saradalog/leadlag-signal` の `webapp/Code_api.gs`、合言葉は伏せてある）から `action=data`（GET）と `writeActual`（POST）で受け取る。設定画面のURLと合言葉は localStorage の `ll-cfg`。

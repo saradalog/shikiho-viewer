@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#27407a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="リードラグ">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<title>リードラグ手帳</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Shippori+Mincho:wght@600;800&display=swap">
+<style>
+/* Layout: phone-first single column; sticky tab bar on top; each tab is one scrollable sheet of cards */
+:root{
+  --bg:#f6f6f2; --surface:#ffffff; --ink:#1d2230; --muted:#666c7a; --line:#d9dadf;
+  --accent:#27407a; --accent-soft:#d8e0f0;
+  --plus:#1e7a4a; --minus:#b23a3a;
+  --buy:#b23a3a; --sell:#27407a;
+  --ok:#1e7a4a; --ok-soft:#dcefe3; --warn:#9a6200; --warn-soft:#f8ecd2; --bad:#b23a3a; --bad-soft:#f6dede;
+  --f-display:"Shippori Mincho","Hiragino Mincho ProN","Yu Mincho",serif;
+  --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --f-num:"BIZ UDPGothic","Hiragino Sans",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#14161c; --surface:#1c1f27; --ink:#e7e8ec; --muted:#9a9fac; --line:#30343f;
+  --accent:#8fa8e6; --accent-soft:#2a3550; --plus:#5cc58d; --minus:#f08080; --buy:#f08080; --sell:#8fa8e6;
+  --ok:#5cc58d; --ok-soft:#1f3a2b; --warn:#f2b45c; --warn-soft:#3a2d16; --bad:#f08080; --bad-soft:#43262a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#14161c; --surface:#1c1f27; --ink:#e7e8ec; --muted:#9a9fac; --line:#30343f;
+  --accent:#8fa8e6; --accent-soft:#2a3550; --plus:#5cc58d; --minus:#f08080; --buy:#f08080; --sell:#8fa8e6;
+  --ok:#5cc58d; --ok-soft:#1f3a2b; --warn:#f2b45c; --warn-soft:#3a2d16; --bad:#f08080; --bad-soft:#43262a; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6}
+
+.wrap{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 48px;display:flex;flex-direction:column;gap:14px}
+header.top{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top,0px)}
+header.top .in{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px 0}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.brand h1{font-family:var(--f-display);font-weight:800;font-size:22px;margin:0;letter-spacing:.02em}
+.brand small{color:var(--muted);font-size:12px}
+nav.tabs{display:flex;gap:4px;overflow-x:auto;margin-top:6px}
+nav.tabs a{flex:0 0 auto;text-align:center;padding:9px 12px;color:var(--muted);text-decoration:none;font-weight:500;font-size:14px;border-bottom:3px solid transparent;white-space:nowrap}
+nav.tabs a[aria-current="page"]{color:var(--accent);border-color:var(--accent)}
+nav.tabs a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.card h2{font-family:var(--f-display);font-weight:800;font-size:17px;margin:0 0 10px;text-wrap:balance}
+.card h3{font-size:13px;margin:14px 0 6px;color:var(--muted);letter-spacing:.04em}
+.muted{color:var(--muted)} .small{font-size:12.5px}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.plus{color:var(--plus)} .minus{color:var(--minus)}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12.5px;font-weight:700}
+.pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.bad{background:var(--bad-soft);color:var(--bad)} .pill.info{background:var(--accent-soft);color:var(--accent)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media (max-width:520px){.tiles{grid-template-columns:1fr 1fr}.tiles .tile:first-child{grid-column:1/-1}}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
+.tile .lab{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.tile .val{font-family:var(--f-num);font-size:22px;font-weight:500;line-height:1.3;font-variant-numeric:tabular-nums}
+.tile .sub{font-size:12px;color:var(--muted)}
+.meter{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:8px}
+.meter i{display:block;height:100%;background:var(--ok)}
+.tbl{overflow-x:auto} table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{color:var(--muted);font-weight:500;font-size:12px} td:first-child,th:first-child{text-align:left}
+.btn{appearance:none;border:1px solid var(--accent);background:var(--accent);color:var(--surface);border-radius:8px;padding:9px 14px;font:inherit;font-weight:700;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--accent)} .btn:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);flex:1 1 140px;min-width:0}
+input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+input.num{font-family:var(--f-num)}
+.notice{border-radius:10px;padding:12px 14px;font-size:14px}
+.notice.bad{background:var(--bad-soft);color:var(--bad)} .notice.warn{background:var(--warn-soft);color:var(--warn)} .notice.ok{background:var(--ok-soft);color:var(--ok)} .notice.info{background:var(--accent-soft);color:var(--accent)}
+.side{display:flex;align-items:center;gap:8px;font-family:var(--f-display);font-size:15px;margin:16px 0 8px}
+.side .dot{width:10px;height:10px;border-radius:50%}
+.stk{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:8px;margin-bottom:8px;border-left-width:4px}
+.stk.buy{border-left-color:var(--buy)} .stk.sell{border-left-color:var(--sell)}
+.stk.out{opacity:.55}
+.stk .hd{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.stk .nm{font-weight:700} .stk .sec{font-size:12px;color:var(--muted)}
+.stk .ctl{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.stk .ctl label{font-size:11.5px;color:var(--muted);display:flex;flex-direction:column;gap:2px;min-width:0}
+.stk .ctl input,.stk .ctl select{padding:6px 8px;font-size:14px}
+.bal{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media (max-width:420px){.bal{grid-template-columns:1fr}}
+.chart svg{width:100%;height:auto;display:block}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px;border-radius:2px}
+[data-view]{display:flex;flex-direction:column;gap:14px}
+.sk{color:var(--muted);font-size:13px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+html{color-scheme:light}
+@media (prefers-color-scheme: dark){html{color-scheme:dark}}
+body{margin:0;-webkit-text-size-adjust:100%}
+.wrap{padding-bottom:calc(48px + env(safe-area-inset-bottom,0px))}
+.cfg{display:grid;gap:10px}
+</style>
+</head><body>
+
+<header class="top"><div class="in">
+  <div class="brand"><h1>リードラグ手帳</h1><small id="stamp">日米業種リードラグ</small></div>
+  <nav class="tabs" aria-label="画面">
+    <a href="javascript:void(0)" role="button" data-tab="today">今日の注文</a>
+    <a href="javascript:void(0)" role="button" data-tab="results">成績</a>
+    <a href="javascript:void(0)" role="button" data-tab="input">損益の入力</a>
+    <a href="javascript:void(0)" role="button" data-tab="models">モデル</a>
+    <a href="javascript:void(0)" role="button" data-tab="settings" style="margin-left:auto">設定</a>
+  </nav>
+</div></header>
+
+<main class="wrap">
+  <div id="conn" hidden></div>
+
+  <!-- 今日の注文 -->
+  <section data-view="today">
+    <div class="card" id="todayHead"><h2>今日の注文</h2><p class="sk">スプレッドシートを読み込んでいます…</p></div>
+    <div class="card" id="winCard" hidden>
+      <h2>窓チェック（8:50〜8:55）</h2>
+      <div class="row">
+        <label class="f">基準（市場全体の動き %）<input id="base" class="num" type="number" step="0.1" inputmode="decimal" value="0"></label>
+        <button class="btn ghost" id="useMedian" type="button">「前」の中央値を基準にする</button>
+      </div>
+      <p class="small muted" id="medianNote">各銘柄に板の「前」の値段を入れると、OKか取消かを判定します。日経先物と個別株の中央値の向きが逆なら、中央値を基準にします。</p>
+    </div>
+    <div class="card" id="balCard" hidden>
+      <h2>口座ごとの金額</h2>
+      <div class="bal" id="balBox"></div>
+      <div class="row" style="margin-top:10px"><button class="btn ghost" id="autoAssign" type="button">口座を自動で振り分ける</button><button class="btn ghost" id="resetAssign" type="button">入力をリセット</button></div>
+      <p class="small muted">差が30万円以上なら、少ない側に100株ずつ（2銘柄まで）足して金額をそろえます。入力した内容はこの端末にだけ保存されます。</p>
+    </div>
+    <div class="card" id="orderCard" hidden><div id="orders"></div></div>
+  </section>
+
+  <!-- 成績 -->
+  <section data-view="results" hidden>
+    <div class="tiles" id="tiles"><div class="tile"><div class="lab">実際の累計</div><div class="val sk">…</div></div></div>
+    <div class="card"><h2>実際の累計と中止ライン</h2><div class="chart" id="chartActual"><p class="sk">読み込み中…</p></div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>実際の累計（円）</span><span><i style="background:var(--bad)"></i>中止ライン（一番高いところ−40万円）</span></div></div>
+    <div class="card"><h2>実際と記録の比較</h2><div class="chart" id="chartCmp"><p class="sk">読み込み中…</p></div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>実際</span><span><i style="background:var(--muted)"></i>記録（全銘柄を同じ金額で売買した場合）</span></div>
+      <p class="small muted" id="cmpNote"></p></div>
+    <div class="card"><h2>実運用チェック</h2><div id="health"><p class="sk">読み込み中…</p></div></div>
+    <div class="card"><h2>日ごとの実際の損益</h2><div class="tbl" id="dailyTbl"><p class="sk">読み込み中…</p></div></div>
+  </section>
+
+  <!-- 損益の入力 -->
+  <section data-view="input" hidden>
+    <div class="card">
+      <h2>実際の損益を入力</h2>
+      <form id="form" class="row" novalidate>
+        <label class="f">日付<input id="fDate" type="date" required></label>
+        <label class="f">SBI（円）<input id="fSbi" class="num" type="number" step="1" inputmode="numeric" placeholder="例 12800"></label>
+        <label class="f">楽天（円）<input id="fRak" class="num" type="number" step="1" inputmode="numeric" placeholder="例 -5700"></label>
+        <div style="flex-basis:100%"></div>
+        <button class="btn" type="submit" id="fGo">内容を確認する</button>
+      </form>
+      <p class="small muted">「実際売買結果(櫻田入力)」シートに書き込みます。その日の行があれば上書き、なければ合計の行の上の空いている行に入れます。空欄の口座は書き換えません。</p>
+      <div id="confirm" hidden></div>
+      <div id="fMsg"></div>
+    </div>
+    <div class="card"><h2>最近の入力</h2><div class="tbl" id="recentTbl"><p class="sk">読み込み中…</p></div></div>
+  </section>
+
+  <!-- モデル -->
+  <section data-view="models" hidden>
+    <div class="card"><h2>切り替えてからの成績（記録）</h2><div id="liveModels"><p class="sk">読み込み中…</p></div></div>
+    <div class="card"><h2>バックテスト（2011年7月〜2026年11月）</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>モデル</th><th>R/R 2011〜20</th><th>R/R 2021〜</th><th>年率 2021〜</th><th>最大の落ち込み</th><th>最悪の日</th></tr></thead>
+        <tbody>
+          <tr><td><b>今の本番：組み合わせ</b><br><span class="small muted">PCA＋直接OLS（半年・1年・2年）、休まない</span></td><td class="num">3.27</td><td class="num">2.07</td><td class="num">19.1%</td><td class="num">8.8%</td><td class="num">−2.59%</td></tr>
+          <tr><td>11/11までの組み合わせ<br><span class="small muted">PCA＋直接OLS（1年）、下位25%休み</span></td><td class="num">3.11</td><td class="num">1.73</td><td class="num">15.1%</td><td class="num">8.4%</td><td class="num">−2.57%</td></tr>
+          <tr><td>PCAだけ<br><span class="small muted">11/10までの本番</span></td><td class="num">2.73</td><td class="num">1.37</td><td class="num">12.7%</td><td class="num">12.7%</td><td class="num">−3.23%</td></tr>
+          <tr><td>直接OLSだけ（1年）</td><td class="num">3.28</td><td class="num">1.71</td><td class="num">14.7%</td><td class="num">9.0%</td><td class="num">−4.04%</td></tr>
+        </tbody></table></div>
+      <p class="small muted">J-Quantsの正確な前引け値、窓チェック±4%・決算の日を除外、全銘柄同じ金額、コスト0。年率は片側300万円に対する割合の単純合計。26個の案から選んでいるので、実際の成績はこれより下がると見込みます。</p>
+    </div>
+  </section>
+  <!-- 設定 -->
+  <section data-view="settings" hidden>
+    <div class="card">
+      <h2>接続先</h2>
+      <form id="cfgForm" class="cfg" novalidate>
+        <label class="f" for="cUrl">Apps Script ウェブアプリのURL（…/exec）<input id="cUrl" inputmode="url" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec"></label>
+        <label class="f" for="cTok">合言葉（Code.gs の TOKEN）<input id="cTok" autocomplete="off"></label>
+        <div class="row"><button class="btn" type="submit">保存して接続を確かめる</button></div>
+      </form>
+      <div id="cfgMsg" style="margin-top:10px"></div>
+      <p class="small muted">URLと合言葉はこの端末にだけ保存されます。データは毎回スプレッドシート「米国シグナル」から読み、前回の分はこの端末に残すので、電波が悪いときも最後に読んだ内容を見られます。</p>
+    </div>
+  </section>
+</main>
+
+<script>
+(function(){
+'use strict';
+const SID='1n5Ok6fqIJFpRsoWDeOZmm1MgX1gJWsSMn0jNDTlUcGY';
+const SV='Google Sheets';
+const STOP=400000, BASE_YEN=3000000, MODEL_FROM='2026-11-11';
+const SH={app:'アプリ_今日の注文', act:'実際売買結果(櫻田入力)', cmp:'実際と記録の比較', perf:'日次成績_前引け',
+          health:'実運用チェック', pca:'影_今のPCA_成績_前引け', ols:'影_直接OLS_成績_前引け'};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num=v=>{if(v==null)return NaN;const s=String(v).replace(/[,円%\s]/g,'').replace('−','-');return s===''?NaN:Number(s)};
+const yen=v=>isFinite(v)?(v>0?'+':v<0?'−':'')+Math.abs(Math.round(v)).toLocaleString('ja-JP')+'円':'—';
+const man=v=>isFinite(v)?(v>0?'+':v<0?'−':'')+(Math.abs(v)/1e4).toLocaleString('ja-JP',{maximumFractionDigits:1})+'万円':'—';
+const pct=(v,d=2)=>isFinite(v)?(v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(d)+'%':'—';
+const cls=v=>v>0?'plus':v<0?'minus':'';
+const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const jstToday=()=>{const d=new Date(Date.now()+9*3600e3);return d.toISOString().slice(0,10)};
+
+/* ---------- タブ ---------- */
+const TABS=['today','results','input','models','settings'];
+function route(h){const t=TABS.includes(h)?h:store.get('ll-tab','today');store.set('ll-tab',t);window.scrollTo(0,0);
+  document.querySelectorAll('[data-view]').forEach(s=>s.hidden=s.dataset.view!==t);
+  document.querySelectorAll('nav.tabs a').forEach(a=>a.setAttribute('aria-current',a.dataset.tab===t?'page':'false'));}
+document.querySelectorAll('nav.tabs a').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();route(a.dataset.tab)})); route();
+
+/* ---------- Apps Script（四季報ビューアと同じ方式：URL＋合言葉） ---------- */
+const cfg=()=>store.get('ll-cfg',null);
+async function api(action,body){
+  const c=cfg(); if(!c||!c.url||!c.token){const e=new Error('nocfg');e.code='nocfg';throw e}
+  const ac=new AbortController(); const t=setTimeout(()=>ac.abort(),45000);
+  let res;
+  try{
+    if(body) res=await fetch(c.url,{signal:ac.signal,method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({action,token:c.token},body))});
+    else res=await fetch(c.url+(c.url.includes('?')?'&':'?')+'action='+action+'&token='+encodeURIComponent(c.token),{signal:ac.signal});
+  }catch(e){const x=new Error(e.name==='AbortError'?'timeout':'network');x.code=x.message;throw x}
+  finally{clearTimeout(t)}
+  let j; try{j=await res.json()}catch(e){const x=new Error('badres');x.code='badres';throw x}
+  if(!j.ok){const x=new Error(j.error||'error');x.code=j.error||'error';throw x}
+  return j;
+}
+function errText(e){const c=e&&e.code;
+  if(c==='nocfg') return '接続先がまだ設定されていません。「設定」でApps ScriptのURLと合言葉を入れてください。';
+  if(c==='unauthorized') return '合言葉が一致しません。「設定」で入れ直してください。';
+  if(c==='network') return 'つながりませんでした。電波を確かめるか、URLが正しいか「設定」で確かめてください。';
+  if(c==='timeout') return '応答がありませんでした。少し待ってから「再読み込み」を押してください。';
+  if(c==='badres') return 'Apps Scriptから正しい答えが返ってきませんでした。デプロイで「アクセスできるユーザー：全員」になっているか確かめてください。';
+  return 'エラー：'+esc((e&&e.message)||'不明');}
+function connMsg(e){
+  const box=$('#conn'); box.hidden=false;
+  box.innerHTML='<div class="notice warn">'+errText(e)+'<div class="row" style="margin-top:8px"><button class="btn ghost" id="retry" type="button">再読み込み</button>'+
+    (e&&(e.code==='nocfg'||e.code==='unauthorized'||e.code==='badres')?'<button class="btn" id="goCfg" type="button">設定を開く</button>':'')+'</div></div>';
+  $('#retry').onclick=()=>{box.hidden=true;loadAll()};
+  const g=$('#goCfg'); if(g) g.onclick=()=>route('settings');
+}
+/* ---------- 今日の注文 ---------- */
+let today=null; // {info:{}, rows:[]}
+function parseApp(vals){
+  const info={}, rows=[]; let i=0;
+  for(;i<vals.length;i++){const r=vals[i]||[]; if(!r[0]&&!r[1]) break; if(r[0]!=='項目') info[r[0]]=r[1]||'';}
+  for(;i<vals.length;i++){const r=vals[i]||[]; if(r[0]==='売買'){i++;break}}
+  for(;i<vals.length;i++){const r=vals[i]||[]; if(!r[4]) continue;
+    rows.push({side:r[0],rank:r[1],sec:r[2],sig:num(r[3]),code:String(r[4]),name:r[5],prev:num(r[6]),shares:num(r[7]),note:r[11]||''});}
+  return {info,rows};
+}
+function stKey(){return 'll-orders-'+(today&&today.info['日付'])}
+function getState(){return store.get(stKey(),{})}
+function setState(s){store.set(stKey(),s)}
+function rowState(r,s){const o=s[r.code+r.side]||{};
+  return {acct:o.acct||(r.note?'取消':''),shares:isFinite(o.shares)?o.shares:r.shares,pre:o.pre??''};}
+function renderToday(){
+  const head=$('#todayHead');
+  if(!today){return}
+  const I=today.info, st=I['状態']||'';
+  const skip=st.includes('見送り'), pre=st.includes('予告');
+  const pill=skip?'<span class="pill warn">'+esc(st)+'</span>':pre?'<span class="pill info">'+esc(st)+'</span>':'<span class="pill ok">売買する日</span>';
+  const rows=[['米国',I['米国']],['強さ',I['強さ']],['銘柄数',I['銘柄数']],['モデル',I['モデル']],['決算の日',I['決算']],['理由',I['理由']]].filter(x=>x[1]);
+  head.innerHTML='<h2>'+esc(I['日付']||'')+' の注文 '+pill+'</h2>'+
+    (I['モデルの注意']?'<div class="notice warn" style="margin-bottom:10px">'+esc(I['モデルの注意'])+'</div>':'')+
+    (I['決算']&&I['決算'].includes('取得できず')?'<div class="notice warn" style="margin-bottom:10px">決算の日のデータが取れませんでした。昨日15時以降〜今日に決算を発表する銘柄は自分で確認して外してください。</div>':'')+
+    '<dl class="kv">'+rows.map(r=>'<dt>'+esc(r[0])+'</dt><dd>'+esc(r[1])+'</dd>').join('')+'</dl>'+
+    '<p class="small muted" style="margin-top:8px">寄成で建てて、前引成で返済。更新 '+esc(I['更新']||'')+'</p>';
+  const has=today.rows.length>0;
+  $('#winCard').hidden=!has; $('#balCard').hidden=!has; $('#orderCard').hidden=!has;
+  if(!has) return;
+  renderOrders();
+}
+function renderOrders(){
+  const s=getState(), base=num($('#base').value)||0;
+  let html='';
+  for(const side of ['買い','売り']){
+    const list=today.rows.filter(r=>r.side===side); if(!list.length) continue;
+    html+='<div class="side"><span class="dot" style="background:var('+(side==='買い'?'--buy':'--sell')+')"></span>'+(side==='買い'?'買い（寄り買 → 前引け売）':'売り（寄り売 → 前引け買戻）')+'</div>';
+    for(const r of list){
+      const o=rowState(r,s); const lo=r.prev*(1+(base-4)/100), hi=r.prev*(1+(base+4)/100);
+      const p=num(o.pre); let w='';
+      if(isFinite(p)&&p>0){w=(p<lo||p>hi)?'<span class="pill bad">範囲外 → 取消</span>':'<span class="pill ok">OK</span>'}
+      const out=o.acct==='取消';
+      const amt=o.shares*(isFinite(p)&&p>0?p:r.prev);
+      html+='<div class="stk '+(side==='買い'?'buy':'sell')+(out?' out':'')+'" data-k="'+esc(r.code+r.side)+'">'+
+        '<div class="hd"><div><span class="nm">'+esc(r.code)+' '+esc(r.name)+'</span> <span class="sec">'+esc(r.rank)+'位 '+esc(r.sec)+'</span></div><div>'+w+'</div></div>'+
+        (r.note?'<div class="notice warn small" style="padding:6px 10px">'+esc(r.note)+'</div>':'')+
+        '<div class="small muted num">前日 '+fmtPx(r.prev)+' ｜ OK '+fmtPx(lo)+'〜'+fmtPx(hi)+' ｜ 約'+(amt/1e4).toFixed(0)+'万円</div>'+
+        '<div class="ctl">'+
+          '<label>口座<select data-f="acct"><option value="">未定</option><option'+(o.acct==='楽天'?' selected':'')+'>楽天</option><option'+(o.acct==='SBI'?' selected':'')+'>SBI</option><option'+(out?' selected':'')+'>取消</option></select></label>'+
+          '<label>株数<input data-f="shares" class="num" type="number" step="100" min="0" inputmode="numeric" value="'+esc(o.shares)+'"></label>'+
+          '<label>板の「前」<input data-f="pre" class="num" type="number" step="0.1" inputmode="decimal" placeholder="値段" value="'+esc(o.pre)+'"></label>'+
+        '</div></div>';
+    }
+  }
+  $('#orders').innerHTML=html;
+  renderBalance();
+  medianNote();
+}
+function fmtPx(v){return isFinite(v)?v.toLocaleString('ja-JP',{maximumFractionDigits:v<1000?1:0}):'—'}
+function balanceData(){
+  const s=getState(), acc={'楽天':{b:0,s:0},'SBI':{b:0,s:0},'未定':{b:0,s:0}};
+  for(const r of today.rows){const o=rowState(r,s); if(o.acct==='取消') continue;
+    const p=num(o.pre), px=isFinite(p)&&p>0?p:r.prev, a=(o.shares||0)*px, k=o.acct||'未定';
+    if(r.side==='買い') acc[k].b+=a; else acc[k].s+=a;}
+  return acc;
+}
+function renderBalance(){
+  const acc=balanceData();
+  const box=['楽天','SBI'].concat(acc['未定'].b||acc['未定'].s?['未定']:[]).map(k=>{
+    const d=acc[k].b-acc[k].s, bad=Math.abs(d)>=300000 && k!=='未定';
+    return '<div class="tile"><div class="lab">'+k+'</div><div class="small num">買い '+(acc[k].b/1e4).toFixed(0)+'万 ｜ 売り '+(acc[k].s/1e4).toFixed(0)+'万</div>'+
+      '<div class="val '+(bad?'':'')+'" style="font-size:18px">差 '+man(d)+'</div>'+
+      (k==='未定'?'<div class="sub">口座がまだ決まっていない銘柄</div>':bad?'<span class="pill bad">30万円以上 → 調整</span>':'<span class="pill ok">30万円未満</span>')+'</div>';
+  }).join('');
+  $('#balBox').innerHTML=box;
+}
+function medianNote(){
+  const s=getState(), ch=[];
+  for(const r of today.rows){const p=num(rowState(r,s).pre); if(isFinite(p)&&p>0&&r.prev>0) ch.push((p/r.prev-1)*100)}
+  const n=$('#medianNote'), b=$('#useMedian');
+  if(ch.length<3){b.disabled=true; return}
+  ch.sort((a,b)=>a-b); const m=ch.length%2?ch[(ch.length-1)/2]:(ch[ch.length/2-1]+ch[ch.length/2])/2;
+  b.disabled=false; b.dataset.m=m.toFixed(1);
+  n.textContent='入力した'+ch.length+'銘柄の「前」の中央値は '+pct(m,1)+'。日経先物と向きが逆、または大きくずれていれば、こちらを基準にします。';
+}
+$('#orders').addEventListener('input',e=>{
+  const t=e.target, card=t.closest('.stk'); if(!card) return;
+  const s=getState(), k=card.dataset.k, r=today.rows.find(x=>x.code+x.side===k), o=rowState(r,s);
+  const f=t.dataset.f; if(f==='shares') o.shares=num(t.value)||0; else if(f==='pre') o.pre=t.value; else o.acct=t.value;
+  s[k]=o; setState(s);
+  if(f==='acct'){renderOrders()} else {renderBalance(); medianNote(); if(f==='pre') softUpdate(card,r,o)}
+});
+function softUpdate(card,r,o){
+  const base=num($('#base').value)||0, lo=r.prev*(1+(base-4)/100), hi=r.prev*(1+(base+4)/100), p=num(o.pre);
+  const slot=card.querySelector('.hd>div:last-child');
+  slot.innerHTML=isFinite(p)&&p>0?((p<lo||p>hi)?'<span class="pill bad">範囲外 → 取消</span>':'<span class="pill ok">OK</span>'):'';
+}
+$('#base').addEventListener('input',()=>{store.set('ll-base-'+(today&&today.info['日付']),$('#base').value);renderOrders()});
+$('#useMedian').addEventListener('click',e=>{$('#base').value=e.currentTarget.dataset.m;$('#base').dispatchEvent(new Event('input'))});
+$('#resetAssign').addEventListener('click',()=>{setState({});renderOrders()});
+$('#autoAssign').addEventListener('click',()=>{
+  const s=getState(); const items=today.rows.map(r=>({r,o:rowState(r,s)})).filter(x=>x.o.acct!=='取消');
+  items.forEach(x=>{const p=num(x.o.pre);x.a=(x.o.shares||0)*(isFinite(p)&&p>0?p:x.r.prev)*(x.r.side==='買い'?1:-1)});
+  items.sort((a,b)=>Math.abs(b.a)-Math.abs(a.a));
+  const g={'楽天':0,'SBI':0};
+  for(const x of items){const k=Math.abs(g['楽天']+x.a)+Math.abs(g['SBI'])<=Math.abs(g['SBI']+x.a)+Math.abs(g['楽天'])?'楽天':'SBI';
+    g[k]+=x.a; x.o.acct=k; s[x.r.code+x.r.side]=x.o;}
+  setState(s); renderOrders();
+});
+
+/* ---------- 成績 ---------- */
+function parseActual(vals){
+  const now=jstToday(), Y=+now.slice(0,4), out=[];
+  vals.forEach((r,i)=>{
+    const a=String((r&&r[0])||'').trim().replace(/-/g,'/'); const p=a.split('/').map(Number);
+    let d=null;
+    if(p.length===3&&p.every(isFinite)) d=new Date(Date.UTC(p[0],p[1]-1,p[2]));
+    else if(p.length===2&&p.every(isFinite)){d=new Date(Date.UTC(Y,p[0]-1,p[1])); if(d.toISOString().slice(0,10)>now) d=new Date(Date.UTC(Y-1,p[0]-1,p[1]))}
+    if(!d||isNaN(d)) return;
+    const ex=(r||[]).slice(1).some(x=>String(x).includes('除外'));
+    const sbi=num(r[1]), rak=num(r[2]);
+    if(!isFinite(sbi)&&!isFinite(rak)) {out.push({row:i+1,date:d.toISOString().slice(0,10),label:a,sbi,rak,total:NaN,ex});return}
+    out.push({row:i+1,date:d.toISOString().slice(0,10),label:a,sbi,rak,total:(isFinite(sbi)?sbi:0)+(isFinite(rak)?rak:0),ex});
+  });
+  return out;
+}
+function lineChart(el,series,opt={}){
+  const W=640,H=230,L=58,R=12,T=12,B=28;
+  const n=Math.max(...series.map(s=>s.v.length)); if(n<2){el.innerHTML='<p class="sk">2日分以上たまると表示します。</p>';return}
+  const all=series.flatMap(s=>s.v.filter(isFinite)).concat(opt.zero===false?[]:[0]);
+  let lo=Math.min(...all), hi=Math.max(...all); if(hi-lo<1){hi+=1;lo-=1} const pad=(hi-lo)*.08; lo-=pad; hi+=pad;
+  const x=i=>L+(W-L-R)*i/(n-1), y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));
+  const step=niceStep((hi-lo)/4); let grid='';
+  for(let v=Math.ceil(lo/step)*step; v<=hi; v+=step){grid+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="var(--line)" stroke-width="1"/>'+
+    '<text x="'+(L-6)+'" y="'+(y(v)+4)+'" text-anchor="end" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono,monospace">'+(opt.fmt?opt.fmt(v):v)+'</text>'}
+  if(lo<0&&hi>0) grid+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(0)+'" y2="'+y(0)+'" stroke="var(--muted)" stroke-width="1"/>';
+  const labs=opt.labels||[]; let xl='';
+  [0,Math.floor((n-1)/2),n-1].forEach(i=>{if(labs[i]) xl+='<text x="'+x(i)+'" y="'+(H-8)+'" text-anchor="'+(i===0?'start':i===n-1?'end':'middle')+'" font-size="11" fill="var(--muted)">'+esc(labs[i])+'</text>'});
+  const paths=series.map(s=>{let d='';s.v.forEach((v,i)=>{if(isFinite(v)) d+=(d?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)});
+    const last=s.v.length-1, end=isFinite(s.v[last])&&s.dot?'<circle cx="'+x(last)+'" cy="'+y(s.v[last])+'" r="3.5" fill="'+s.c+'"/>':'';
+    return '<path d="'+d+'" fill="none" stroke="'+s.c+'" stroke-width="'+(s.w||2)+'"'+(s.dash?' stroke-dasharray="5 4"':'')+' stroke-linejoin="round"/>'+end}).join('');
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(opt.aria||'グラフ')+'">'+grid+paths+xl+'</svg>';
+}
+function niceStep(r){const p=Math.pow(10,Math.floor(Math.log10(r)));const f=r/p;return (f<1.5?1:f<3?2:f<7?5:10)*p}
+function renderResults(act,cmp,health){
+  const days=act.filter(d=>isFinite(d.total)).sort((a,b)=>a.date<b.date?-1:1);
+  let cum=0,peak=0; const cv=[],pv=[],lab=[];
+  days.forEach(d=>{cum+=d.total; peak=Math.max(peak,cum); cv.push(cum); pv.push(peak-STOP); lab.push(d.label)});
+  const dd=cum-peak, left=STOP+dd, wins=days.filter(d=>d.total>0).length;
+  $('#tiles').innerHTML=
+    '<div class="tile"><div class="lab">実際の累計</div><div class="val '+cls(cum)+'">'+yen(cum)+'</div><div class="sub">'+days.length+'日 ｜ 勝ち '+wins+'日 ・ 負け '+(days.length-wins)+'日</div></div>'+
+    '<div class="tile"><div class="lab">一番高いところから</div><div class="val '+cls(dd)+'">'+yen(dd)+'</div><div class="sub">一番高いところ '+yen(peak)+'</div></div>'+
+    '<div class="tile"><div class="lab">中止ラインまで</div><div class="val">'+(left/1e4).toFixed(1)+'万円</div><div class="meter" aria-hidden="true"><i style="width:'+Math.max(0,Math.min(100,left/STOP*100)).toFixed(0)+'%;background:var('+(left<STOP*.3?'--bad':left<STOP*.6?'--warn':'--ok')+')"></i></div><div class="sub">−40万円で自動停止</div></div>';
+  lineChart($('#chartActual'),[{v:pv,c:'var(--bad)',dash:true,w:1.5},{v:cv,c:'var(--accent)',dot:true,w:2.5}],{labels:lab,fmt:v=>(v/1e4).toFixed(0)+'万',aria:'実際の累計損益の推移'});
+  // 比較
+  const use=cmp.slice(1).filter(r=>r&&r[5]==='○');
+  let ca=0,cr=0,same=0; const av=[],rv=[],cl=[];
+  use.forEach(r=>{const a=num(r[3]),b=num(r[2]); ca+=a; cr+=b; av.push(ca); rv.push(cr); cl.push(String(r[0]).slice(5).replace('-','/')); if(Math.sign(a)===Math.sign(b)) same++});
+  lineChart($('#chartCmp'),[{v:rv,c:'var(--muted)',w:2},{v:av,c:'var(--accent)',dot:true,w:2.5}],{labels:cl,fmt:v=>(v/1e4).toFixed(0)+'万',aria:'実際と記録の累計の比較'});
+  $('#cmpNote').innerHTML=use.length?'比較した'+use.length+'日：実際 <span class="num '+cls(ca)+'">'+yen(ca)+'</span> ／ 記録 <span class="num '+cls(cr)+'">'+yen(cr)+'</span>。損益の向きが同じ日は '+same+'/'+use.length+' 日。':'';
+  // 実運用チェック
+  const h=health.slice(1).filter(r=>r&&r[0]).pop();
+  if(h){const hd=health[0];const pick=['取引回数','累積(%)','R/R','勝率(%)','PF','t値','判定'];
+    $('#health').innerHTML='<dl class="kv">'+pick.map(k=>{const i=hd.indexOf(k);return i<0?'':'<dt>'+esc(k)+'</dt><dd class="num">'+esc(h[i]||'—')+'</dd>'}).join('')+'</dl><p class="small muted">'+esc(h[0])+' 時点（記録上の成績）</p>'}
+  else $('#health').innerHTML='<p class="sk">まだ記録がありません。</p>';
+  // 表
+  const rec=days.slice().reverse();
+  $('#dailyTbl').innerHTML='<table><thead><tr><th>日付</th><th>SBI</th><th>楽天</th><th>合計</th><th>累計</th></tr></thead><tbody>'+
+    rec.map((d,i)=>'<tr><td>'+esc(d.label)+(d.ex?' <span class="pill warn">除外</span>':'')+'</td><td class="num '+cls(d.sbi)+'">'+(isFinite(d.sbi)?yen(d.sbi):'')+'</td><td class="num '+cls(d.rak)+'">'+(isFinite(d.rak)?yen(d.rak):'')+'</td><td class="num '+cls(d.total)+'">'+yen(d.total)+'</td><td class="num '+cls(cv[cv.length-1-i])+'">'+yen(cv[cv.length-1-i])+'</td></tr>').join('')+'</tbody></table>';
+  $('#recentTbl').innerHTML='<table><thead><tr><th>日付</th><th>SBI</th><th>楽天</th><th>合計</th></tr></thead><tbody>'+
+    rec.slice(0,8).map(d=>'<tr><td>'+esc(d.label)+'</td><td class="num">'+(isFinite(d.sbi)?yen(d.sbi):'')+'</td><td class="num">'+(isFinite(d.rak)?yen(d.rak):'')+'</td><td class="num '+cls(d.total)+'">'+yen(d.total)+'</td></tr>').join('')+'</tbody></table>';
+}
+
+/* ---------- モデル ---------- */
+function perfMap(vals){const m={};(vals||[]).slice(1).forEach(r=>{if(r&&r[0]>=MODEL_FROM){const v=num(r[7]);if(isFinite(v)) m[r[0]]=v}});return m}
+function renderModels(prod,pca,ols){
+  const P=perfMap(prod),A=perfMap(pca),O=perfMap(ols);
+  const dates=[...new Set([...Object.keys(P),...Object.keys(A),...Object.keys(O)])].sort();
+  if(!dates.length){$('#liveModels').innerHTML='<p class="sk">11/11以降の記録がまだありません。翌朝の自動実行で前日の結果が入ります。</p>';return}
+  const sum=m=>dates.reduce((s,d)=>s+(m[d]||0),0);
+  const sp=sum(P),sa=sum(A),so=sum(O);
+  $('#liveModels').innerHTML='<div class="tbl"><table><thead><tr><th>日付</th><th>組み合わせ（本番）</th><th>PCAだけ</th><th>直接OLSだけ</th></tr></thead><tbody>'+
+    dates.map(d=>'<tr><td>'+d.slice(5).replace('-','/')+'</td>'+[P,A,O].map(m=>'<td class="num '+cls(m[d])+'">'+(d in m?pct(m[d]):'休み')+'</td>').join('')+'</tr>').join('')+
+    '<tr><td><b>合計</b></td>'+[sp,sa,so].map(v=>'<td class="num '+cls(v)+'"><b>'+pct(v)+'</b><br><span class="small">'+man(v/100*BASE_YEN)+'</span></td>').join('')+'</tr></tbody></table></div>'+
+    '<p class="small muted">倍率込み・全銘柄同じ金額で計算した記録（円は片側300万円換算）。数週間の差では、どのモデルが良いかは判断できません。通知の「🔀」で、戻す目安に当たったかを確認します。</p>';
+}
+
+/* ---------- 入力 ---------- */
+$('#fDate').value=jstToday();
+let pending=null;
+$('#form').addEventListener('submit',e=>{
+  e.preventDefault(); $('#fMsg').innerHTML='';
+  const d=$('#fDate').value, s=$('#fSbi').value.trim(), r=$('#fRak').value.trim();
+  if(!d){$('#fMsg').innerHTML='<div class="notice bad">日付を入れてください。</div>';return}
+  if(s===''&&r===''){$('#fMsg').innerHTML='<div class="notice bad">SBIか楽天の、少なくとも片方の金額を入れてください。</div>';return}
+  const [Y,M,D]=d.split('-').map(Number); pending={iso:d,label:M+'/'+D,sbi:s===''?null:Number(s),rak:r===''?null:Number(r)};
+  const tot=(pending.sbi||0)+(pending.rak||0);
+  $('#confirm').hidden=false;
+  $('#confirm').innerHTML='<div class="notice info" style="margin-top:10px"><b>'+esc(pending.label)+'</b> に書き込みます：SBI '+(pending.sbi==null?'（変更なし）':yen(pending.sbi))+' ／ 楽天 '+(pending.rak==null?'（変更なし）':yen(pending.rak))+'（合計 '+yen(tot)+'）'+
+    '<div class="row" style="margin-top:8px"><button class="btn" id="doWrite" type="button">書き込む</button><button class="btn ghost" id="cancelWrite" type="button">やめる</button></div></div>';
+  $('#doWrite').onclick=doWrite; $('#cancelWrite').onclick=()=>{$('#confirm').hidden=true;pending=null};
+});
+async function doWrite(){
+  if(!pending) return;
+  const btn=$('#doWrite'); btn.disabled=true; btn.textContent='書き込み中…';
+  try{
+    const row=(await api('writeActual',{label:pending.label,iso:pending.iso,sbi:pending.sbi,rak:pending.rak})).row;
+    $('#fMsg').innerHTML='<div class="notice ok" style="margin-top:10px">'+esc(pending.label)+' を'+row+'行目に書き込みました。</div>';
+    $('#confirm').hidden=true; pending=null; $('#fSbi').value=''; $('#fRak').value='';
+    loadAll(true);
+  }catch(e){
+    $('#fMsg').innerHTML='<div class="notice bad" style="margin-top:10px">書き込めませんでした。'+errText(e)+(e&&(e.code==='network'||e.code==='timeout')?'（書き込めたか分からないので、「最近の入力」を確かめてから押し直してください）':'')+'</div>';
+    btn.disabled=false; btn.textContent='書き込む';
+  }
+}
+
+/* ---------- 読み込み ---------- */
+function render(D){
+  const R={app:D[SH.app],act:D[SH.act],cmp:D[SH.cmp],health:D[SH.health],prod:D[SH.perf],pca:D[SH.pca],ols:D[SH.ols]};
+  if(R.app){today=parseApp(R.app); const b=store.get('ll-base-'+today.info['日付'],'0'); $('#base').value=b; renderToday()}
+  else $('#todayHead').innerHTML='<h2>今日の注文</h2><p class="sk">「'+esc(SH.app)+'」シートがまだありません。朝7時の自動実行で作られます。</p>';
+  if(R.act) renderResults(parseActual(R.act),R.cmp||[],R.health||[]);
+  renderModels(R.prod||[],R.pca||[],R.ols||[]);
+}
+let loading=false;
+async function loadAll(){
+  if(loading) return; loading=true;
+  const cached=store.get('ll-cache',null);
+  if(cached&&!today){render(cached.data); $('#stamp').textContent='前回 '+cached.time+' の内容・更新中…'}
+  else $('#stamp').textContent='読み込み中…';
+  try{
+    const j=await api('data');
+    $('#conn').hidden=true; render(j.data);
+    store.set('ll-cache',{data:j.data,time:j.time});
+    $('#stamp').textContent='読み込み '+String(j.time||'').slice(5).replace('-','/');
+  }catch(e){
+    connMsg(e);
+    $('#stamp').textContent=cached?('前回 '+cached.time+' の内容'):'未接続';
+  }finally{loading=false}
+}
+$('#cfgForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const url=$('#cUrl').value.trim(), token=$('#cTok').value.trim();
+  if(!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)){$('#cfgMsg').innerHTML='<div class="notice bad">URLは https://script.google.com/macros/s/…/exec の形で入れてください。</div>';return}
+  if(!token){$('#cfgMsg').innerHTML='<div class="notice bad">合言葉を入れてください。</div>';return}
+  store.set('ll-cfg',{url,token}); $('#cfgMsg').innerHTML='<div class="notice info">接続を確かめています…</div>';
+  try{await api('ping'); $('#cfgMsg').innerHTML='<div class="notice ok">つながりました。</div>'; loadAll(); setTimeout(()=>route('today'),700)}
+  catch(err){$('#cfgMsg').innerHTML='<div class="notice bad">'+errText(err)+'</div>'}
+});
+(function(){const c=cfg(); if(c){$('#cUrl').value=c.url||''; $('#cTok').value=c.token||''}})();
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}
+loadAll();
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible') loadAll()});
+})();
+</script>
+</body></html>
