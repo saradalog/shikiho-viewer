@@ -71,3 +71,11 @@
 
 - `leadlag/` は日米業種リードラグ戦略のアプリ（今日の注文・窓チェック・成績・損益の入力・モデル比較）。https://saradalog.github.io/shikiho-viewer/leadlag/ で配信。四季報ビューアとは独立していて、`index.html`・`sw.js`（`leadlag-shell-vN`）・`manifest.webmanifest`・`icons/` を自前で持つ。直したら `leadlag/sw.js` の版を+1する（ルートの `sw.js` は上げなくてよい）。
 - データは「米国シグナル」スプレッドシートに付けた別の Apps Script（非公開 `saradalog/leadlag-signal` の `webapp/Code_api.gs`、合言葉は伏せてある）から `action=data`（GET）と `writeActual`（POST）で受け取る。設定画面のURLと合言葉は localStorage の `ll-cfg`。
+
+## 同居している別アプリ：`indices/`（市場指標）
+
+- `indices/` はスプレッドシート「指数」（ID `1b-BQAfbRSqAuKaf7_iFmnEIy_Z1siUdKsR4mof-C2ak`、月別タブ `R8.11月` など＋`指標定義`・`アラート履歴`・`取得ログ`）をスマホで見るアプリ。https://saradalog.github.io/shikiho-viewer/indices/ で配信。四季報ビューアとは独立していて、`index.html`・`sw.js`（`indices-shell-vN`）・`manifest.webmanifest`・`icons/` を自前で持つ。直したら `indices/sw.js` の版を+1する（ルートの `sw.js` は上げなくてよい）。
+- 画面：今日（主要6指標・相場の温度・大きく動いた指標・分類別の一覧）／推移（グラフ・2指標の重ね比べ・期間）／表（分類ごとの日次表）／解説（指標定義タブ・色の決まり・取得ログ）／設定。
+- データは「指数」に付けた Apps Script（非公開 `saradalog/-daily-indices7-30` の `webapp/Code_api.gs`、合言葉は伏せてある）から `action=data`（GET）で受け取る。**読み取り専用でシートには書かない。** 設定のURLと合言葉は localStorage の `ix-cfg`、前回のデータは `ix-cache`。
+- 見出しのゆれ（「日本物価指数（6月）」「\n米国物価指数」など）は画面側の `canon()` でそろえる。「3.5～3.75」のような幅は、FRB政策金利は上限、それ以外は中央で数値化して、表示は元の文字のまま。
+- 色は「一つ前に記録された値」との比較。株価・為替・商品は変化率、金利・利回り差・物価など%の指標は差（pt）。しきい値は `IND` の表（`update_indices.py` の TH_* に合わせた）。新しい列がシートに増えたら `IND` に分類を足す（足さないと「その他」に出る）。
