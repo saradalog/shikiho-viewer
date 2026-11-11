@@ -1,5 +1,7 @@
 # AGENTS.md — saradalog/shikiho-viewer（四季報ビューア）
 
+> 複数リポジトリをまたぐ現在の全体仕様は、非公開 `saradalog/analysis/PROJECT_HANDOFF.md` が正本です。アクセスできる場合は最初に読んでください。
+
 このファイルは、このリポジトリを編集するAI（Codex・Gemini・Copilot・Claude など）向けの説明です。
 持ち主は日本語で指示します。画面の文言・説明・コミットメッセージは日本語で書いてください。
 
