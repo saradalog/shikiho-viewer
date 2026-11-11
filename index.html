@@ -162,6 +162,14 @@ a.btn{text-decoration:none;display:inline-block}
 .hsum b{font-size:17px}
 @media (max-width:480px){.hsum{grid-template-columns:repeat(2,1fr)}.hsum div:nth-child(2){border-right:0}.hsum div:nth-child(-n+2){border-bottom:1px solid var(--rule)}}
 .story{display:grid;gap:12px;font-size:14px;line-height:1.6}
+.drv{border:1px solid var(--rule);border-radius:8px;background:var(--surface);padding:8px 10px}
+.drv summary{cursor:pointer;font-weight:700;font-size:15px}
+.drv-seg{margin-top:10px;font-size:12.5px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--rule);padding-bottom:3px}
+.drv-row{padding:7px 0;border-bottom:1px solid var(--rule)}
+.drv-row:last-child{border-bottom:0}
+.drv-k{font-size:13.5px}
+.drv-v{font-size:15px;font-weight:700;overflow-wrap:anywhere}
+.drv-none{color:var(--muted);font-weight:400}
 .story-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .story-head h3{margin:0;font-size:17px}
 .story-thesis{margin:0;padding:12px 14px;background:var(--paper);border:1px solid var(--rule);border-radius:8px;font-weight:700}
@@ -688,6 +696,8 @@ const cached=store.get('shk-watch',null); if(cached){W.rows=cached.rows||[];W.at
 // 保有詳細（株数・取得単価・投資ストーリー）とストーリー判定。Apps Script の list に同梱されて届く
 let HD=(cached&&cached.hold)||{holds:[],judges:[]};
 let OFV=(cached&&cached.ownfv)||{};
+// 売上ドライバー（保有銘柄の売上の構成要素。監視シートの「売上ドライバー」タブ。表示するだけで計算しない）
+let DRV=(cached&&cached.drivers)||{};
 function cfg(){return store.get('shk-cfg',null)}
 async function api(action,body,params){
   const c=cfg(); if(!c||!c.url||!c.token){const e=new Error('nocfg');e.code='nocfg';throw e}
@@ -717,7 +727,8 @@ function applyRows(j){
   W.rows=j.rows||[]; W.at=Date.parse(j.at)||Date.now();
   if(j.hold)HD=j.hold;
   if(j.ownfv)OFV=j.ownfv;
-  store.set('shk-watch',{rows:W.rows,at:W.at,hold:HD,ownfv:OFV});
+  if(j.drivers)DRV=j.drivers;
+  store.set('shk-watch',{rows:W.rows,at:W.at,hold:HD,ownfv:OFV,drivers:DRV});
 }
 const holdOf=code=>(HD.holds||[]).find(h=>h.code===code);
 const ownFairOf=code=>(OFV||{})[String(code||'').toUpperCase()]||null;
@@ -952,6 +963,21 @@ function kpiPanel(code){
     '<p class="small" style="margin:0">総合達成率は各KPIを100%上限で単純平均。目標の優先順位は「中期経営計画 → 会社予想 → 過去実績 → 投資仮説」。</p></div>';
 }
 
+function driverBox(code){
+  const rows=DRV[code]||[]; if(!rows.length) return '';
+  const link=t=>{const m=/https?:\/\/\S+/.exec(t||'');return m?' <a href="'+esc(m[0])+'" target="_blank" rel="noopener">出典</a>':''};
+  let h='<details class="drv"><summary>売上ドライバー（'+rows.length+'項目）</summary><p class="small" style="margin:6px 0 0">売上・利益を構成要素に分けた数字。最新値が入っている項目は「更新」と表示。数字は表示するだけで、このアプリでは計算していません。</p>', seg=null;
+  for(const r of rows){
+    if(r.seg!==seg){seg=r.seg;h+='<div class="drv-seg">'+esc(seg||'')+'</div>'}
+    const has=!!(r.latest&&String(r.latest).trim()), val=has?r.latest:r.base, at=has?r.latestAt:r.baseAt, none=!has&&/^未取得/.test(r.base||'');
+    h+='<div class="drv-row"><div class="drv-k">'+esc(r.item)+(r.unit?' <span class="small">（'+esc(r.unit)+'）</span>':'')+(has?' <span class="pill buy">更新</span>':'')+'</div>'+
+      '<div class="drv-v num'+(none?' drv-none':'')+'">'+esc(val||'—')+'</div>'+
+      (at?'<div class="small">'+esc(String(at).replace(/https?:\/\/\S+/g,'').replace(/[、,\s]+$/,''))+link(at)+(has&&r.base&&!/^未取得/.test(r.base)?'　基準：'+esc(r.base):'')+'</div>':'')+
+      (r.role?'<div class="small">'+esc(r.role)+'</div>':'')+(r.memo?'<div class="small">'+esc(r.memo)+'</div>':'')+'</div>';
+  }
+  return h+'</details>';
+}
+
 function storyBox(code){
   const h=holdOf(code); const js=judgesOf(code).slice(0,12); if(!h&&!js.length) return '';
   let x='<div class="story">';
@@ -974,6 +1000,7 @@ function storyBox(code){
         '<div class="story-card"><div class="k">買い増し目安（適正×80%）</div><div class="v num">'+(isNum(addLine)?fm(addLine,0)+'円以下':'—')+'</div></div>'+
       '</div>'+
       (h.note?'<div class="story-card"><div class="k">方針・メモ</div><div class="v">'+esc(h.note)+'</div></div>':'')+
+      driverBox(code)+
       '<div class="hsum num" style="margin:0"><div><span>株数</span><b>'+(p.sh!=null?fm(p.sh,0):'—')+'</b></div><div><span>評価額</span><b>'+(p.val!=null?fm(p.val,0):'—')+'</b></div><div><span>損益</span><b style="color:'+(p.pl!=null&&p.pl>=0?'var(--up)':'var(--down)')+'">'+(p.plr!=null?(p.pl>=0?'+':'')+fm(p.pl,0)+'（'+pc(p.plr)+'）':'—')+'</b></div><div><span>年間配当（予想）</span><b>'+(p.div!=null?fm(p.div,0):'—')+'</b>'+(p.yoc!=null?' <span class="small">取得単価比 '+pc(p.yoc)+'</span>':'')+'</div></div>'+
       '<div class="story-actions"><div class="form"><label for="h-sh">株数<input id="h-sh" inputmode="numeric" value="'+(p.sh!=null?p.sh:'')+'"></label><label for="h-cost">取得単価（円）<input id="h-cost" inputmode="decimal" value="'+(p.cost!=null?p.cost:'')+'"></label></div>'+
       '<div class="actions"><button class="btn" data-act="savehold" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>株数・取得単価を保存</button></div></div>';
