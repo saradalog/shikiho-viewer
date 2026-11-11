@@ -170,6 +170,12 @@ a.btn{text-decoration:none;display:inline-block}
 .drv-k{font-size:13.5px}
 .drv-v{font-size:15px;font-weight:700;overflow-wrap:anywhere}
 .drv-none{color:var(--muted);font-weight:400}
+.drv-up,.drv-down,.drv-flat{border-left:4px solid var(--rule);padding-left:8px}
+.drv-up{border-left-color:var(--up)}.drv-up .drv-v{color:var(--up)}
+.drv-down{border-left-color:var(--down)}.drv-down .drv-v{color:var(--down)}
+.pill.drv-p-up{background:var(--buy-soft);color:var(--up)}
+.pill.drv-p-down{background:var(--sell-soft,#f7dede);color:var(--down)}
+.pill.drv-p-flat{background:var(--rule);color:var(--muted)}
 .story-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .story-head h3{margin:0;font-size:17px}
 .story-thesis{margin:0;padding:12px 14px;background:var(--paper);border:1px solid var(--rule);border-radius:8px;font-weight:700}
@@ -966,13 +972,18 @@ function kpiPanel(code){
 function driverBox(code){
   const rows=DRV[code]||[]; if(!rows.length) return '';
   const link=t=>{const m=/https?:\/\/\S+/.exec(t||'');return m?' <a href="'+esc(m[0])+'" target="_blank" rel="noopener">出典</a>':''};
-  let h='<details class="drv"><summary>売上ドライバー（'+rows.length+'項目）</summary><p class="small" style="margin:6px 0 0">売上・利益を構成要素に分けた数字。最新値が入っている項目は「更新」と表示。数字は表示するだけで、このアプリでは計算していません。</p>', seg=null;
+  let h='<details class="drv"><summary>売上ドライバー（'+rows.length+'項目）</summary><p class="small" style="margin:6px 0 0">売上・利益を構成要素に分けた数字。色は独自予想の前提と比べた判定（緑＝上振れ、赤＝下振れ、灰色＝想定どおり）。判定が無い項目は「更新」とだけ表示。数字は表示するだけで、このアプリでは計算していません。</p>', seg=null;
   for(const r of rows){
     if(r.seg!==seg){seg=r.seg;h+='<div class="drv-seg">'+esc(seg||'')+'</div>'}
-    const has=!!(r.latest&&String(r.latest).trim()), val=has?r.latest:r.base, at=has?r.latestAt:r.baseAt, none=!has&&/^未取得/.test(r.base||'');
-    h+='<div class="drv-row"><div class="drv-k">'+esc(r.item)+(r.unit?' <span class="small">（'+esc(r.unit)+'）</span>':'')+(has?' <span class="pill buy">更新</span>':'')+'</div>'+
+    const has=!!(r.latest&&String(r.latest).trim()), at=has?r.latestAt:r.baseAt, none=!has&&/^未取得/.test(r.base||'');
+    // 判定：N列（dir）。Apps Script が古くて届かないときは、最新値の先頭の【上振れ】などの印を読む
+    let val=has?String(r.latest):r.base, dir=String(r.dir||'').trim();
+    const tag=/^\s*【(上振れ|下振れ|想定どおり)】\s*/.exec(val||''); if(tag){if(!dir)dir=tag[1];val=val.replace(tag[0],'')}
+    const dc=!has?'':/上振れ/.test(dir)?'up':/下振れ/.test(dir)?'down':/想定/.test(dir)?'flat':'';
+    h+='<div class="drv-row'+(dc?' drv-'+dc:'')+'"><div class="drv-k">'+esc(r.item)+(r.unit?' <span class="small">（'+esc(r.unit)+'）</span>':'')+
+      (dc?' <span class="pill drv-p-'+dc+'">'+(dc==='up'?'▲ 上振れ':dc==='down'?'▼ 下振れ':'想定どおり')+'</span>':has?' <span class="pill hold">更新</span>':'')+'</div>'+
       '<div class="drv-v num'+(none?' drv-none':'')+'">'+esc(val||'—')+'</div>'+
-      (at?'<div class="small">'+esc(String(at).replace(/https?:\/\/\S+/g,'').replace(/[、,\s]+$/,''))+link(at)+(has&&r.base&&!/^未取得/.test(r.base)?'　基準：'+esc(r.base):'')+'</div>':'')+
+      (at?'<div class="small">'+esc(String(at).replace(/https?:\/\/\S+/g,'').replace(/[、,\s]+$/,''))+link(at)+(has&&r.base&&!/^未取得/.test(r.base)?'　基準：'+esc(r.base)+(r.baseAt?'（'+esc(r.baseAt)+'）':''):'')+'</div>':'')+
       (r.role?'<div class="small">'+esc(r.role)+'</div>':'')+(r.memo?'<div class="small">'+esc(r.memo)+'</div>':'')+'</div>';
   }
   return h+'</details>';
