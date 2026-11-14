@@ -837,7 +837,9 @@ function view(o){
   const dev=isNum(px)&&isNum(theo)&&theo>0?px/theo-1:null;
   const vj=isNum(px)&&isNum(theo)?valuationJudge(s,px,theo,theoModel):null;
   const judge=!isNum(px)?'株価なし':vj?vj.label:!isNum(theo)?'理論株価なし':'妥当';
-  return Object.assign({},o,{theo,px,pxSrc,dev,judge,vj,ownfv,theoModel,theoSource,marketTheo:live&&live.value,marketModel:live&&live.comp?live.comp.primaryName:null});
+  // 売りラインは採用理論株価×1.2でその場で出す（監視シートH列の保存値は古い理論株価で計算されたままのことがある。2026-11-14）
+  const sellLine=isNum(theo)&&theo>0?theo*1.2:o.sellLine;
+  return Object.assign({},o,{theo,px,pxSrc,dev,judge,vj,ownfv,theoModel,theoSource,sellLine,marketTheo:live&&live.value,marketModel:live&&live.comp?live.comp.primaryName:null});
 }
 function paintWatch(){
   const nh=W.rows.filter(isHold).length, nw=W.rows.length-nh;
