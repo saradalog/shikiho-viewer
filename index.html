@@ -828,7 +828,9 @@ function view(o){
   if(!isNum(px)&&s&&isNum(s._px)){px=s._px;pxSrc='終値'}
   const live=s?safeTheo(s):null, ownfv=ownFairOf(o.code);
   let theo=null,theoModel='',theoSource='';
+  const hfair=(holdOf(o.code)||{}).fair;
   if(isNum(o.ovr)){theo=o.ovr;theoModel='手動上書き';theoSource='manual'}
+  else if(isNum(hfair)&&hfair>0){theo=hfair;theoModel='保有詳細の適正株価（手作り）';theoSource='hold'}
   else if(ownfv&&isNum(ownfv.base)){theo=ownfv.base;theoModel='独自予想・'+(ownfv.model||'理論株価');theoSource='own'}
   else if(live&&isNum(live.value)){theo=live.value;theoModel=live.comp?live.comp.primaryName:'残余利益';theoSource='market'}
   else if(isNum(o.theo)){theo=o.theo;theoModel='保存値';theoSource='saved'}
@@ -994,8 +996,10 @@ function storyBox(code){
   let x='<div class="story">';
   if(h){
     const s=BY[code], t=s?theo(s):null, o0=watched(code), o=o0?view(o0):null;
-    const fair=o&&isNum(o.theo)?o.theo:(t&&isNum(t.value)?t.value:null);
-    const addLine=isNum(fair)?fair*.8:null;
+    const hf=isNum(h.fair)&&h.fair>0?h.fair:null;
+    const fair=hf!=null?hf:(o&&isNum(o.theo)?o.theo:(t&&isNum(t.value)?t.value:null));
+    const addLine=hf!=null&&isNum(h.addLine)&&h.addLine>0?h.addLine:(isNum(fair)?fair*.8:null);
+    const refTheo=o&&o.ownfv&&isNum(o.ownfv.base)?['独自予想（Base）',o.ownfv.base]:(o&&isNum(o.marketTheo)?['四季報データ',o.marketTheo]:null);
     const p=posOf(o||{code,px:s&&s._px});
     x+='<div class="story-head"><h3>投資ストーリー</h3>'+(h.state?'<span class="pill '+stateCls(h.state)+'">'+esc(h.state)+'</span>':'')+'</div>'+
       (h.story?'<p class="story-thesis">'+esc(h.story)+'</p>':'<p class="small" style="margin:0">ストーリーはまだありません。スプレッドシートの「保有詳細」に書いてください。</p>')+
@@ -1007,8 +1011,9 @@ function storyBox(code){
         '<div class="story-card kpi"><div class="k">監視KPI</div><div class="v">'+esc(h.kpi||'—')+'</div></div>'+
       '</div>'+
       '<div class="story-price">'+
-        '<div class="story-card"><div class="k">適正株価（採用理論株価）</div><div class="v num">'+(isNum(fair)?fm(fair,0)+'円':'—')+'</div></div>'+
-        '<div class="story-card"><div class="k">買い増し目安（適正×80%）</div><div class="v num">'+(isNum(addLine)?fm(addLine,0)+'円以下':'—')+'</div></div>'+
+        '<div class="story-card"><div class="k">'+(hf!=null?'適正株価（保有詳細・手作り）':'適正株価（採用理論株価）')+'</div><div class="v num">'+(isNum(fair)?fm(fair,0)+'円':'—')+'</div>'+
+          (hf!=null&&refTheo?'<div class="small">参考：'+refTheo[0]+' '+fm(refTheo[1],0)+'円</div>':'')+'</div>'+
+        '<div class="story-card"><div class="k">'+(hf!=null&&isNum(h.addLine)&&h.addLine>0?'買い増し目安（保有詳細）':'買い増し目安（適正×80%）')+'</div><div class="v num">'+(isNum(addLine)?fm(addLine,0)+'円以下':'—')+'</div></div>'+
       '</div>'+
       (h.note?'<div class="story-card"><div class="k">方針・メモ</div><div class="v">'+esc(h.note)+'</div></div>':'')+
       driverBox(code)+
@@ -1031,7 +1036,7 @@ function watchBox(code){
   let h='<div class="theo">';
   if(o){
     const own=o.ownfv;
-    h+='<div class="big num"><div><span>'+(own&&isNum(own.base)?'独自予想理論株価（Base）':'採用理論株価')+'</span><b>'+fm(o.theo,pd(s))+cu(s)+'</b></div>'+
+    h+='<div class="big num"><div><span>'+(o.theoSource==='hold'?'適正株価（保有詳細）':own&&isNum(own.base)&&o.theoSource==='own'?'独自予想理論株価（Base）':'採用理論株価')+'</span><b>'+fm(o.theo,pd(s))+cu(s)+'</b></div>'+
       '<div><span>現在株価</span><b>'+fm(o.px,pd(s))+cu(s)+'</b></div>'+
       '<div><span>判定</span><b><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span></b></div></div>';
     if(own&&isNum(own.base)){
