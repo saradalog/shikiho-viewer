@@ -162,6 +162,10 @@ a.btn{text-decoration:none;display:inline-block}
 .hsum b{font-size:17px}
 @media (max-width:480px){.hsum{grid-template-columns:repeat(2,1fr)}.hsum div:nth-child(2){border-right:0}.hsum div:nth-child(-n+2){border-bottom:1px solid var(--rule)}}
 .story{display:grid;gap:12px;font-size:14px;line-height:1.6}
+.drv-sum{border:1px solid var(--rule);border-radius:8px;background:var(--surface);padding:8px 10px;margin-bottom:8px}
+.drv-sum-h{font-weight:700;font-size:15px;margin-bottom:4px}
+.drv-sum-r{font-size:13.5px;padding:4px 0;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}
+.drv-sum-r:last-of-type{border-bottom:0}
 .drv{border:1px solid var(--rule);border-radius:8px;background:var(--surface);padding:8px 10px}
 .drv summary{cursor:pointer;font-weight:700;font-size:15px}
 .drv-seg{margin-top:10px;font-size:12.5px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--rule);padding-bottom:3px}
@@ -1015,7 +1019,12 @@ function kpiPanel(code){
 }
 
 function driverBox(code){
-  const rows=DRV[code]||[]; if(!rows.length) return '';
+  const all=DRV[code]||[]; if(!all.length) return '';
+  // C列が「要約」の行は、成長の源・今の状態・崩れる条件の要約。一覧の上に開いた状態で出す（表示するだけ）
+  const sum=all.filter(r=>String(r.seg||'').trim()==='要約'), rows=all.filter(r=>String(r.seg||'').trim()!=='要約');
+  let top='';
+  if(sum.length){top='<div class="drv-sum"><div class="drv-sum-h">成長ドライバーの要約</div>'+sum.map(r=>{const v=(r.latest&&String(r.latest).trim())?r.latest:r.base;return '<div class="drv-sum-r"><b>'+esc(r.item)+'</b>：'+esc(v||'—')+'</div>'}).join('')+(sum[0].baseAt?'<div class="small">'+esc(sum[0].baseAt)+'</div>':'')+'</div>'}
+  if(!rows.length) return top;
   const link=t=>{const m=/https?:\/\/\S+/.exec(t||'');return m?' <a href="'+esc(m[0])+'" target="_blank" rel="noopener">出典</a>':''};
   let h='<details class="drv"><summary>売上ドライバー（'+rows.length+'項目）</summary><p class="small" style="margin:6px 0 0">売上・利益を構成要素に分けた数字。色は独自予想の前提と比べた判定（緑＝上振れ、赤＝下振れ、灰色＝想定どおり）。判定が無い項目は「更新」とだけ表示。数字は表示するだけで、このアプリでは計算していません。</p>', seg=null;
   for(const r of rows){
@@ -1031,7 +1040,7 @@ function driverBox(code){
       (at?'<div class="small">'+esc(String(at).replace(/https?:\/\/\S+/g,'').replace(/[、,\s]+$/,''))+link(at)+(has&&r.base&&!/^未取得/.test(r.base)?'　基準：'+esc(r.base)+(r.baseAt?'（'+esc(r.baseAt)+'）':''):'')+'</div>':'')+
       (r.role?'<div class="small">'+esc(r.role)+'</div>':'')+(r.memo?'<div class="small">'+esc(r.memo)+'</div>':'')+'</div>';
   }
-  return h+'</details>';
+  return top+h+'</details>';
 }
 
 function storyBox(code){
