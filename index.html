@@ -1026,7 +1026,7 @@ function driverBox(code){
   if(sum.length){top='<div class="drv-sum"><div class="drv-sum-h">成長ドライバーの要約</div>'+sum.map(r=>{const v=(r.latest&&String(r.latest).trim())?r.latest:r.base;return '<div class="drv-sum-r"><b>'+esc(r.item)+'</b>：'+esc(v||'—')+'</div>'}).join('')+(sum[0].baseAt?'<div class="small">'+esc(sum[0].baseAt)+'</div>':'')+'</div>'}
   if(!rows.length) return top;
   const link=t=>{const m=/https?:\/\/\S+/.exec(t||'');return m?' <a href="'+esc(m[0])+'" target="_blank" rel="noopener">出典</a>':''};
-  let h='<details class="drv"><summary>売上ドライバー（'+rows.length+'項目）</summary><p class="small" style="margin:6px 0 0">売上・利益を構成要素に分けた数字。色は独自予想の前提と比べた判定（緑＝上振れ、赤＝下振れ、灰色＝想定どおり）。判定が無い項目は「更新」とだけ表示。数字は表示するだけで、このアプリでは計算していません。</p>', seg=null;
+  let h='<details class="drv"><summary>先行指標（'+rows.length+'項目）</summary><p class="small" style="margin:6px 0 0">決算の前に動く数字（月次・毎日の統計、市況、会社の節目の発表）。色は利益にとって良い方向か悪い方向かの判定（緑＝上振れ、赤＝下振れ、灰色＝想定どおり）。決算でしか分からない項目は監視シートのタブ「売上ドライバー_決算」にあり、ここには出しません。判定が無い項目は「更新」とだけ表示。数字は表示するだけで、このアプリでは計算していません。</p>', seg=null;
   for(const r of rows){
     if(r.seg!==seg){seg=r.seg;h+='<div class="drv-seg">'+esc(seg||'')+'</div>'}
     const has=!!(r.latest&&String(r.latest).trim()), at=has?r.latestAt:r.baseAt, none=!has&&/^未取得/.test(r.base||'');
