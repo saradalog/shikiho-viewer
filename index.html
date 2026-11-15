@@ -393,6 +393,13 @@ function renderDetail(code){
     '<div class="tile"><div class="k">PBR</div><div class="v">'+(isNum(s._pbr)?s._pbr.toFixed(2)+'倍':'—')+'</div></div>'+
     '<div class="tile"><div class="k">予想配当利回り</div><div class="v">'+(isNum(g('配当利回り下限'))&&g('配当利回り下限')!==g('配当利回り上限')?pc(g('配当利回り下限'))+'〜':'')+pc(g('配当利回り上限'))+'</div></div>'+
     '<div class="tile"><div class="k">'+(mkOf(s)==='jp'?'今期予想営業利益率':'営業利益率（直近実績）')+'</div><div class="v">'+pc(s._opm)+'</div></div></div>';
+  {const gc=growthCheck(s);
+   h+='<div class="tiles num" style="margin-top:8px">'+
+    '<div class="tile"><div class="k">株価が織り込む成長率（FCF・5年）</div><div class="v">'+revText(gc)+'</div></div>'+
+    '<div class="tile"><div class="k">実績の売上成長（'+(gc.salesN||3)+'年平均）</div><div class="v">'+(isNum(gc.sales3)?pc(gc.sales3):'—')+'</div></div>'+
+    '<div class="tile"><div class="k">EV/売上</div><div class="v">'+(isNum(gc.evSales)?gc.evSales.toFixed(2)+'倍':'—')+'</div></div>'+
+    '<div class="tile"><div class="k">成長の点検</div><div class="v" style="font-size:14px">'+(isNum(gc.gap)?(gc.gap>0?'前提は実績より控えめ':'実績以上の成長が前提'):(gc.revNote?'—':'—'))+'</div></div></div>'+
+    '<p class="small" style="margin:4px 0 0">織り込み成長率は、今の株価になるにはFCF（直近2期平均）が5年間毎年何%伸びる必要があるか（割引率8%・永久成長率1%）。理論株価ではなく期待値の点検用。'+(gc.revNote?esc(gc.revNote)+'。':'')+'粗利率はデータが無いため出していません。</p>';}
   h+='<section><h3>理論株価と監視</h3><div id="wbox">'+watchBox(code)+'</div></section>';
   h+=satBox(s);
   const comment = gc('特色（原文）')||gc('コメント1（原文）');
@@ -458,6 +465,40 @@ function median(a){const x=a.filter(isNum).sort((p,q)=>p-q);if(!x.length)return 
 function secOf(s){return SEC&&SEC.c[s.code]!=null?SEC.c[s.code]:null}
 function actualOp(s){const Y=n=>col('years',n),a=(s.y||[]).filter(r=>r[Y('区分')]==='実績'&&isNum(r[Y('営業利益（百万円）')]));return a.length?a[a.length-1][Y('営業利益（百万円）')]:null}
 function salesGrowth(s){const Y=n=>col('years',n),a=(s.y||[]).filter(r=>r[Y('区分')]==='実績'&&isNum(r[Y('売上高（百万円）')])).map(r=>r[Y('売上高（百万円）')]);if(a.length<2||!(a[0]>0))return 0;const n=Math.min(5,a.length-1),x=a[a.length-1-n],y=a[a.length-1];return x>0&&y>0?clip(Math.pow(y/x,1/n)-1,0,.15):0}
+// 成長の点検（2026-11-14 持ち主の決定：全銘柄に「逆算DCF」と「EV/売上」を足す。理論株価ではなく成長株の期待値の点検用）
+//  織り込み成長率：今の株価になるには、FCF（直近2期の平均）が5年間毎年何%伸びる必要があるか（割引率8%・永久成長率1%）
+//  実績の売上成長：実績の売上高の年平均伸び率（最大3年）。織り込み成長率がこれより低ければ「株価の前提は実績より控えめ」
+//  EV/売上：（時価総額＋有利子負債−現金等）÷直近の実績売上高。利益が小さい成長株を売上で比べる
+//  粗利率は年度比較シートに売上総利益が無いので出していない
+function growthCheck(s){
+  if(s._gc!==undefined)return s._gc;
+  const out={};s._gc=out;
+  try{
+    const sec=SEC&&SEC.c[s.code]!=null?String(SEC.names[SEC.c[s.code]]||''):'';
+    const fin=isFinancialCode(s.code)||/銀行|金融/.test(sec);
+    const F=(s.f||[])[0]||[],gf=n=>F[col('fin',n)],Y=n=>col('years',n);
+    const x=inputs(s);if(!x||!isNum(x.mcap)||!isNum(x.px)||!(x.px>0))return out;
+    const shares=x.mcap/x.px;
+    const ibd=gf('有利子負債'),cash=isNum(gf('現金等 当期'))?gf('現金等 当期'):gf('現金等');
+    const netDebt=(isNum(ibd)?ibd:0)-(isNum(cash)?cash:0);
+    const a=(s.y||[]).filter(r=>r[Y('区分')]==='実績'&&isNum(r[Y('売上高（百万円）')])).map(r=>r[Y('売上高（百万円）')]);
+    const sales=a.length?a[a.length-1]:null;
+    if(a.length>=2){const n=Math.min(3,a.length-1),s0=a[a.length-1-n];if(s0>0&&sales>0){out.sales3=Math.pow(sales/s0,1/n)-1;out.salesN=n}}
+    if(!fin&&isNum(sales)&&sales>0){const ev=x.mcap/1e6+netDebt;if(ev>0)out.evSales=ev/sales}
+    if(fin)return out;
+    const fcfs=[gf('フリーCF 当期'),gf('フリーCF 前期')].filter(isNum),base=fcfs.length?fcfs.reduce((p,q)=>p+q,0)/fcfs.length:null;
+    if(!isNum(base)||base<=0){out.revNote='FCFがマイナスのため計算できません';return out}
+    const R=.08,G=.01,N=5;
+    const priceAt=g=>{let pv=0;for(let t=1;t<=N;t++)pv+=base*Math.pow(1+g,t)/Math.pow(1+R,t);pv+=base*Math.pow(1+g,N)*(1+G)/(R-G)/Math.pow(1+R,N);const eq=pv-netDebt;return eq>0?eq*1e6/shares:null};
+    let lo=-.2,hi=.6;const plo=priceAt(lo),phi=priceAt(hi);
+    if(isNum(plo)&&x.px<plo)out.revBound='-20%未満';
+    else if(isNum(phi)&&x.px>phi)out.revBound='60%超';
+    else if(isNum(plo)&&isNum(phi)){for(let k=0;k<50;k++){const m=(lo+hi)/2,pm=priceAt(m);if(!isNum(pm))break;if(pm<x.px)lo=m;else hi=m}out.revG=(lo+hi)/2}
+    if(isNum(out.revG)&&isNum(out.sales3))out.gap=out.sales3-out.revG;   // ＋なら株価の前提は実績より控えめ
+  }catch(e){console.error('growthCheck',s&&s.code,e)}
+  return out;
+}
+function revText(gc){return isNum(gc.revG)?pc(gc.revG):(gc.revBound||'—')}
 const FIN_CODES=new Set(['8306','8316','8473']);
 function isFinancialCode(code){return FIN_CODES.has(String(code||''))}
 
@@ -870,7 +911,7 @@ function renderWatch(kind){
     const pos=(isNum(o.px)&&isNum(o.theo)&&o.theo>0)?Math.max(0,Math.min(100,o.px/o.theo/ (2) *100)):null;
     const sl=(isNum(o.mult))?Math.min(100,o.mult/2*100):60;
     return '<a class="wrow'+(kindOf(o.code)==='jp'?'':' wide')+'" href="#s-'+esc(o.code)+'"><span class="code">'+esc(o.code)+'</span><span class="nm">'+esc(o.name)+'</span><span class="pill '+judgeCls(o.judge)+'">'+esc(o.judge||'—')+'</span>'+
-    '<span class="sub num">'+satPill(BY[o.code])+(BY[o.code]&&BY[o.code]._sat&&isNum(BY[o.code]._sat.evop)?'<span>営業利益/EV <b>'+pc(BY[o.code]._sat.evop)+'</b></span>':'')+(o.judge==='買い検討'&&BY[o.code]&&BY[o.code]._pick?'<span class="pill buy">割安×高還元</span>':'')+(BY[o.code]&&isNum(BY[o.code]._shy)?'<span>還元 <b>'+pc(BY[o.code]._shy)+'</b></span>':'')+'<span>株価 <b>'+fm(o.px,pdC(o.code))+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,pdC(o.code))+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,pdC(o.code))+'</b></span></span>'+
+    '<span class="sub num">'+satPill(BY[o.code])+(BY[o.code]&&BY[o.code]._sat&&isNum(BY[o.code]._sat.evop)?'<span>営業利益/EV <b>'+pc(BY[o.code]._sat.evop)+'</b></span>':'')+(o.judge==='買い検討'&&BY[o.code]&&BY[o.code]._pick?'<span class="pill buy">割安×高還元</span>':'')+(BY[o.code]&&isNum(BY[o.code]._shy)?'<span>還元 <b>'+pc(BY[o.code]._shy)+'</b></span>':'')+'<span>株価 <b>'+fm(o.px,pdC(o.code))+'</b>'+(o.pxSrc?'<span class="small">（終値）</span>':'')+'</span><span>理論 <b>'+fm(o.theo,pdC(o.code))+'</b>'+(isNum(o.ovr)?'（上書き）':'')+'</span><span>乖離 <b>'+pc(o.dev)+'</b></span><span>売りライン <b>'+fm(o.sellLine,pdC(o.code))+'</b></span>'+(BY[o.code]&&kindOf(o.code)==='jp'?(()=>{const gc=growthCheck(BY[o.code]);return (isNum(gc.revG)||gc.revBound?'<span>織込成長 <b>'+revText(gc)+'</b></span>':'')+(isNum(gc.sales3)?'<span>売上成長 <b>'+pc(gc.sales3)+'</b></span>':'')+(isNum(gc.evSales)?'<span>EV/売上 <b>'+gc.evSales.toFixed(1)+'倍</b></span>':'')})():'')+'</span>'+
     (pos!=null?'<span class="bar" aria-hidden="true"><b style="left:0;width:50%;background:var(--buy-soft)"></b><b style="left:'+sl+'%;right:0;background:var(--sell-soft)"></b><i style="left:'+pos+'%"></i></span>':'')+
     (kind==='hold'?holdSub(o):'')+
     (memoBody(o)?'<span class="sub">'+esc(memoBody(o))+'</span>':'')+'</a>'}).join('')+'</div>';
