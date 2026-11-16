@@ -117,7 +117,8 @@ tr:last-child td{border-bottom:0}
 .t1ctl .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .t1ctl select,.t1ctl input{font:inherit;padding:5px 8px;border:1px solid var(--rule);border-radius:8px;background:var(--surface);color:inherit}
 .t1ctl input{flex:1;min-width:140px}
-.t1row{display:grid;grid-template-columns:64px 1fr auto;gap:2px 10px;padding:10px 4px;border-bottom:1px solid var(--rule)}
+.t1row{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;padding:10px 4px;border-bottom:1px solid var(--rule)}
+.t1row .code{white-space:nowrap}
 .t1row .sub{grid-column:1 / 4;display:flex;flex-wrap:wrap;gap:2px 12px;font-size:13px;color:var(--muted)}
 .t1row .sub b{color:var(--ink)}
 .t1row a{color:inherit;text-decoration:none}
@@ -242,7 +243,7 @@ html{-webkit-tap-highlight-color:transparent}
 <body>
 <header class="top"><div class="wrap">
   <div class="brand"><h1>四季報ビューア</h1><span id="brand-sub">日本株データ</span></div>
-  <nav class="tabs" aria-label="画面切り替え"><a href="#hold" id="t-hold">保有銘柄<span id="hcount" class="cnt"></span></a><a href="#tier1" id="t-tier1">一次監視<span id="t1count" class="cnt"></span></a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#models" id="t-models">モデル解説</a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
+  <nav class="tabs" aria-label="画面切り替え"><a href="#tier1" id="t-tier1">一次監視<span id="t1count" class="cnt"></span></a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#hold" id="t-hold">保有銘柄<span id="hcount" class="cnt"></span></a><a href="#models" id="t-models">モデル解説</a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
   <div class="searchrow">
     <select id="mk" aria-label="市場"><option value="jp">日本株</option><option value="us">米国株</option><option value="hk">中国株（香港）</option></select>
     <input id="q" type="search" placeholder="コード・ティッカー・銘柄名で検索" autocomplete="off" aria-label="銘柄を検索">
