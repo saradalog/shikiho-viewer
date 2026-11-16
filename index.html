@@ -113,17 +113,6 @@ tr:last-child td{border-bottom:0}
 .tabs a{white-space:nowrap;padding:6px 12px;text-decoration:none;color:var(--muted);font-weight:700;font-size:14px;border-bottom:3px solid transparent;margin-bottom:-1px}
 .tabs a[aria-current="page"]{color:var(--ink);border-color:var(--accent)}
 @media (max-width:420px){.tabs{gap:0}.tabs a{padding:6px 6px;font-size:13px}}
-.t1ctl{display:flex;flex-direction:column;gap:8px;margin:12px 0 8px}
-.t1ctl .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.t1ctl select,.t1ctl input{font:inherit;padding:5px 8px;border:1px solid var(--rule);border-radius:8px;background:var(--surface);color:inherit}
-.t1ctl input{flex:1;min-width:140px}
-.t1row{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;padding:10px 4px;border-bottom:1px solid var(--rule)}
-.t1row .code{white-space:nowrap}
-.t1row .sub{grid-column:1 / 4;display:flex;flex-wrap:wrap;gap:2px 12px;font-size:13px;color:var(--muted)}
-.t1row .sub b{color:var(--ink)}
-.t1row a{color:inherit;text-decoration:none}
-.t1row .btn{padding:4px 10px;font-size:13px}
-.t1row.on{background:var(--buy-soft)}
 #wcount{margin-left:6px;font-size:11px;color:var(--surface);background:var(--accent);border-radius:999px;padding:0 6px}
 #wcount:empty{display:none}
 #hcount{margin-left:6px;font-size:11px;color:var(--surface);background:var(--accent);border-radius:999px;padding:0 6px}
@@ -243,7 +232,7 @@ html{-webkit-tap-highlight-color:transparent}
 <body>
 <header class="top"><div class="wrap">
   <div class="brand"><h1>四季報ビューア</h1><span id="brand-sub">日本株データ</span></div>
-  <nav class="tabs" aria-label="画面切り替え"><a href="#hold" id="t-hold">保有銘柄<span id="hcount" class="cnt"></span></a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#tier1" id="t-tier1">一次監視<span id="t1count" class="cnt"></span></a><a href="#models" id="t-models">モデル解説</a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
+  <nav class="tabs" aria-label="画面切り替え"><a href="#hold" id="t-hold">保有銘柄<span id="hcount" class="cnt"></span></a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#models" id="t-models">モデル解説</a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
   <div class="searchrow">
     <select id="mk" aria-label="市場"><option value="jp">日本株</option><option value="us">米国株</option><option value="hk">中国株（香港）</option></select>
     <input id="q" type="search" placeholder="コード・ティッカー・銘柄名で検索" autocomplete="off" aria-label="銘柄を検索">
@@ -901,7 +890,7 @@ function paintWatch(){
   const nh=W.rows.filter(isHold).length, nw=W.rows.length-nh;
   const c=document.getElementById('wcount'); if(c) c.textContent=nw?String(nw):'';
   const hc=document.getElementById('hcount'); if(hc) hc.textContent=nh?String(nh):'';
-  if(location.hash==='#watch') renderWatch('watch'); else if(location.hash==='#hold') renderWatch('hold'); else if(location.hash==='#tier1') renderTier1(); else { const m=location.hash.match(/^#s-([0-9A-Za-z.\-]+)$/); const box=document.getElementById('wbox'); if(m&&box) box.innerHTML=watchBox(m[1].toUpperCase()); }
+  if(location.hash==='#watch') renderWatch('watch'); else if(location.hash==='#hold') renderWatch('hold'); else { const m=location.hash.match(/^#s-([0-9A-Za-z.\-]+)$/); const box=document.getElementById('wbox'); if(m&&box) box.innerHTML=watchBox(m[1].toUpperCase()); }
 }
 function statusLine(){
   let h='';
@@ -1137,109 +1126,7 @@ function watchBox(code){
   if(o&&isHold(o)||holdOf(code)) h+='<div class="theo" style="margin-top:12px">'+storyBox(code)+'</div>';
   return h;
 }
-// ===== 一段目の監視（一次監視タブ。2026-11-16） =====
-// 監視シートのタブ「一次監視」＝売上成長10%以上か競争優位の全銘柄（日本・米国・香港）。数字はPCの集計結果をそのまま出すだけで、ここでは計算しない。
-// 「二段目へ」は監視タブに add し、一次監視のG列（二段目に選ぶ）に印を付ける。二段目は約50銘柄に厳選する
-const T1={state:'init',h:[],rows:[],at:null,err:null,busy:false,msg:null,shown:Infinity};
-const t1f=store.get('shk-t1f2',{mk:'all',kind:'all',cand:false,picked:false,strict:false,sort:'rank',q:''});   // 既定は2,381銘柄すべて（2026-11-16 持ち主の希望）
-const T1MK={'日本':'jp','米国':'us','香港':'hk'};
-function t1i(n){return T1.h.indexOf(n)}
-function t1v(r,n){const i=t1i(n);return i<0?null:r[i]}
-const T2MAX=50;
-function tier2Count(){return W.rows.filter(o=>!isHold(o)).length}
-async function loadTier1(force){
-  if(!T1.rows.length&&!force){ const c=await idbGet('tier1'); if(c&&c.rows){T1.h=c.h;T1.rows=c.rows;T1.at=c.at;T1.state='ok'} }
-  if(!cfg()){T1.state=T1.rows.length?'ok':'nocfg';paintT1();return}
-  if(T1.rows.length&&!force&&T1.at&&Date.now()-T1.at<6*3600e3){paintT1();return}
-  T1.state=T1.rows.length?'refreshing':'loading'; paintT1();
-  try{ const j=await api('tier1'); if(!j.h||!j.h.length){const x=new Error('old_gas_t1');x.code='old_gas_t1';throw x}
-    T1.h=j.h;T1.rows=j.rows||[];T1.at=Date.parse(j.at)||Date.now();T1.state='ok';T1.err=null; idbSet('tier1',{h:T1.h,rows:T1.rows,at:T1.at}); }
-  catch(e){ T1.err=e; T1.state=T1.rows.length?'ok':'error'; if(e.code!=='old_gas_t1'&&e.code!=='api') T1.msg={t:errText(e),err:true}; else T1.msg={t:'Apps Script（Code.gs）が古いため一次監視を読めません。新しいCode.gsを貼り替えて「新しいバージョン」でデプロイしてください。',err:true}; }
-  paintT1();
-}
-function paintT1(){ if(location.hash==='#tier1') renderTier1(); }
-function t1Rows(){
-  const q=(t1f.q||'').trim().toLowerCase().normalize('NFKC');
-  let a=T1.rows.filter(r=>{
-    const mk=T1MK[t1v(r,'市場')]||'';
-    if(t1f.mk!=='all'&&mk!==t1f.mk) return false;
-    const k=String(t1v(r,'区分')||'');
-    if(t1f.kind==='both'&&k!=='成長＋競争優位') return false;
-    if(t1f.kind==='moat'&&!/競争優位/.test(k)) return false;
-    if(t1f.kind==='grow'&&!/成長/.test(k)) return false;
-    if(t1f.cand&&!isNum(t1v(r,'候補順位'))) return false;
-    if(t1f.strict&&t1v(r,'厳選')!=='◯') return false;
-    const code=String(t1v(r,'コード')||'');
-    if(t1f.picked&&!(watched(code)&&!isHold(watched(code)))) return false;
-    if(q&&!(code+' '+(t1v(r,'銘柄名')||'')).toLowerCase().normalize('NFKC').includes(q)) return false;
-    return true;});
-  const num=(r,n)=>{const v=t1v(r,n);return isNum(v)?v:null};
-  const by=(n,dir)=>(x,y)=>{const a=num(x,n),b=num(y,n);if(a==null&&b==null)return 0;if(a==null)return 1;if(b==null)return -1;return dir*(a-b)};
-  const mo={'日本':0,'米国':1,'香港':2};
-  if(t1f.sort==='rank') a.sort((x,y)=>(t1f.mk==='all'?(mo[t1v(x,'市場')]-mo[t1v(y,'市場')]):0)||by('候補順位',1)(x,y)||by('スコア',-1)(x,y)||by('売上CAGR%(有る分)',-1)(x,y));
-  else if(t1f.sort==='score') a.sort(by('スコア',-1));
-  else if(t1f.sort==='cagr') a.sort(by('売上CAGR%(有る分)',-1));
-  else if(t1f.sort==='opm') a.sort(by('営業利益率_平均%',-1));
-  else if(t1f.sort==='roe') a.sort(by('ROE_平均%',-1));
-  return a;
-}
-function p1(v){return isNum(v)?(v<0?'<span class="neg">△'+Math.abs(v).toFixed(1)+'%</span>':v.toFixed(1)+'%'):'—'}
-function renderTier1(){
-  setTab('tier1');
-  if(T1.state==='init'){T1.state='loading';loadTier1();}
-  const a=t1Rows(), n2=tier2Count();
-  const opt=(v,l,cur)=>'<option value="'+v+'"'+(cur===v?' selected':'')+'>'+l+'</option>';
-  const chip=(k,l)=>'<button class="chip" data-t1chip="'+k+'" aria-pressed="'+(!!t1f[k])+'">'+l+'</button>';
-  let h='<div class="wsum"><span class="pill '+(n2>T2MAX?'sell':n2>=T2MAX?'warn':'buy')+'">二段目 '+n2+' / '+T2MAX+'</span><span class="grow small">'+(T1.state==='loading'||T1.state==='refreshing'?'読み込み中…':T1.at?new Date(T1.at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+' 時点':'')+'</span><button class="btn ghost" data-t1="reload"'+(T1.busy?' disabled':'')+'>再読み込み</button></div>';
-  if(T1.msg) h+='<div class="msg'+(T1.msg.err?' err':'')+'">'+esc(T1.msg.t)+'</div>';
-  if(T1.state==='nocfg') h+='<div class="msg err">'+esc(errText({code:'nocfg'}))+'</div><div class="actions"><a class="btn" href="#settings">設定を開く</a></div>';
-  h+='<div class="t1ctl"><div class="row"><select data-t1sel="mk" aria-label="市場">'+opt('all','全市場',t1f.mk)+opt('jp','日本',t1f.mk)+opt('us','米国',t1f.mk)+opt('hk','香港',t1f.mk)+'</select>'+
-    '<select data-t1sel="kind" aria-label="区分">'+opt('all','成長・競争優位すべて',t1f.kind)+opt('both','成長＋競争優位',t1f.kind)+opt('moat','競争優位あり',t1f.kind)+opt('grow','成長10%以上',t1f.kind)+'</select>'+
-    '<select data-t1sel="sort" aria-label="並べ替え">'+opt('rank','候補順位',t1f.sort)+opt('score','スコア',t1f.sort)+opt('cagr','売上の伸び',t1f.sort)+opt('opm','営業利益率',t1f.sort)+opt('roe','ROE',t1f.sort)+'</select></div>'+
-    '<div class="row">'+chip('cand','候補だけ')+chip('strict','厳選だけ')+chip('picked','二段目に入れた銘柄')+'<input id="t1q" type="search" placeholder="コード・銘柄名" value="'+esc(t1f.q||'')+'" aria-label="一次監視を検索"></div></div>';
-  h+='<div class="meta">'+a.length.toLocaleString()+'銘柄</div>';
-  if(!a.length&&T1.state==='ok') h+='<div class="empty">条件に合う銘柄がありません。</div>';
-  h+='<div style="border-top:1px solid var(--rule)">'+a.slice(0,T1.shown).map(r=>{
-    const code=String(t1v(r,'コード')||''), nm=t1v(r,'銘柄名')||'', mk=t1v(r,'市場'), k=String(t1v(r,'区分')||''), rk=t1v(r,'候補順位');
-    const o=watched(code), on=!!(o&&!isHold(o)), held=!!(o&&isHold(o));
-    const link=BY[code]?'#s-'+code:null;
-    const nmH=link?'<a href="'+esc(link)+'"><span class="nm">'+esc(nm)+'</span></a>':'<span class="nm">'+esc(nm)+'</span>';
-    const kc=k==='成長＋競争優位'?'buy':/競争/.test(k)?'warn':'hold';
-    const btn=held?'<span class="pill hold">保有中</span>':on?'<button class="btn ghost" data-t1="out" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>二段目から外す</button>':'<button class="btn" data-t1="in" data-code="'+esc(code)+'"'+(W.busy?' disabled':'')+'>二段目へ</button>';
-    const yrs=t1v(r,'計算年数');
-    return '<div class="t1row'+(on?' on':'')+'"><span class="code">'+(link?'<a href="'+esc(link)+'">'+esc(code)+'</a>':esc(code))+'</span>'+nmH+btn+
-      '<span class="sub num"><span class="pill hold">'+esc(mk||'')+'</span><span class="pill '+kc+'">'+esc(k)+'</span>'+(isNum(rk)?'<span class="pill buy">候補 '+rk+'位</span>':'')+(t1v(r,'厳選')==='◯'?'<span>厳選</span>':'')+
-      '<span>売上の伸び <b>'+p1(t1v(r,'売上CAGR%(有る分)'))+'</b>'+(isNum(yrs)?'（'+yrs+'年）':'')+'</span>'+
-      (isNum(t1v(r,'売上CAGR10年%'))?'<span>10年 <b>'+p1(t1v(r,'売上CAGR10年%'))+'</b></span>':'')+
-      '<span>営業利益率 <b>'+p1(t1v(r,'営業利益率_平均%'))+'</b></span><span>ROE <b>'+p1(t1v(r,'ROE_平均%'))+'</b></span>'+
-      (isNum(t1v(r,'時価総額(億円・日本のみ)'))?'<span>時価総額 <b>'+fm(t1v(r,'時価総額(億円・日本のみ)'),0)+'億円</b></span>':'')+
-      (isNum(t1v(r,'スコア'))?'<span>スコア <b>'+t1v(r,'スコア').toFixed(1)+'</b></span>':'')+'</span></div>';
-  }).join('')+'</div>';
-  if(a.length>T1.shown) h+='<button class="more" data-t1="more">もっと見る（残り '+(a.length-T1.shown).toLocaleString()+'銘柄）</button>';
-  h+='<p class="small">一次監視＝売上の年率（データがある期間、最大10年）10%以上か、営業利益率・ROEが長く高い（競争優位）銘柄。利益率・ROEはその期間の平均。候補順位は市場ごとのスコア（売上の伸び・利益率・ROE・増収の安定性）の上位で、日本50・米国40・香港10。「二段目へ」で監視銘柄タブに入り、毎日の理論株価・株価の更新対象になります。数字はPCの集計結果を表示するだけで、このアプリでは計算していません。<a href="'+SHEET_URL+'">スプレッドシートを開く</a></p>';
-  app.innerHTML=h;
-}
-async function t1Toggle(code,pick){
-  if(W.busy) return;
-  if(pick&&tier2Count()>=T2MAX){ T1.msg={t:'二段目はすでに'+T2MAX+'銘柄です。入れ替える銘柄を先に外してください。',err:true}; paintT1(); return; }
-  const r=T1.rows.find(x=>String(t1v(x,'コード'))===code); const s=BY[code]; const t=s?safeTheo(s):null;
-  W.busy=true; T1.msg={t:(pick?'二段目に入れています…':'二段目から外しています…')}; paintT1();
-  try{
-    if(pick) applyRows(await api('add',{code,name:(s&&s.name)||(r&&t1v(r,'銘柄名'))||'',auto:t?t.value:null,memo:'一次監視から'}));
-    else applyRows(await api('remove',{code}));
-    try{ await api('tier1pick',{code,pick}); const gi=t1i('二段目に選ぶ'); if(r&&gi>=0) r[gi]=pick; }catch(e){}
-    T1.msg={t:pick?code+' を二段目（監視銘柄）に入れました。':code+' を二段目から外しました。'}; W.state='ok';
-  }catch(e){ T1.msg={t:'できたか確認できませんでした。'+errText(e),err:true}; }
-  W.busy=false; paintWatch(); paintT1();
-}
-app.addEventListener('click',e=>{
-  const c=e.target.closest('[data-t1chip]'); if(c){ e.preventDefault(); const k=c.dataset.t1chip; t1f[k]=!t1f[k]; store.set('shk-t1f2',t1f);  renderTier1(); return; }
-  const b=e.target.closest('button[data-t1]'); if(!b) return; e.preventDefault(); const a=b.dataset.t1;
-  if(a==='reload'){T1.msg=null;loadTier1(true)} else if(a==='more'){T1.shown+=100;renderTier1()} else if(a==='in') t1Toggle(b.dataset.code,true); else if(a==='out') t1Toggle(b.dataset.code,false);
-});
-app.addEventListener('change',e=>{ const sel=e.target.closest('[data-t1sel]'); if(!sel) return; t1f[sel.dataset.t1sel]=sel.value; store.set('shk-t1f2',t1f);  renderTier1(); });
-let t1t; app.addEventListener('input',e=>{ if(e.target.id!=='t1q') return; clearTimeout(t1t); t1t=setTimeout(()=>{ t1f.q=e.target.value; store.set('shk-t1f2',t1f);  const pos=e.target.selectionStart; renderTier1(); const el=document.getElementById('t1q'); if(el){el.focus(); try{el.setSelectionRange(pos,pos)}catch(_){}} },250); });
-function setTab(t){for(const k of ['hold','tier1','watch','models','settings']){const el=document.getElementById('t-'+k); if(el) el.setAttribute('aria-current',t===k?'page':'false')}}
+function setTab(t){for(const k of ['hold','watch','models','settings']){const el=document.getElementById('t-'+k); if(el) el.setAttribute('aria-current',t===k?'page':'false')}}
 app.addEventListener('click',async e=>{const b=e.target.closest('button[data-act]'); if(!b) return; e.preventDefault(); const a=b.dataset.act, c=b.dataset.code;
   if(a==='reload'){W.msg=null;readWatch()} else if(a==='add') addWatch(c); else if(a==='addhold') addHold(c); else if(a==='save') saveWatch(c); else if(a==='savehold') saveHold(c);
   else if(a==='remove'){ if(b.dataset.confirm){removeWatch(c)} else {b.dataset.confirm='1';b.textContent='本当に外す（もう一度押す）'} } });
@@ -1336,12 +1223,12 @@ async function boot(){
   for(const m of ['jp','us','hk']){ try{ const v=await idbGet(IDB[m]); if(v&&v.s&&(v.market||'jp')===m) DS[m]=v; }catch(e){} }
   if(DS[MK]){
     try{prep()}catch(e){console.error('prep error',e);app.innerHTML='<div class="msg err">データ初期化でエラーが起きました。画面を再読み込みしてください。直らない場合は設定からデータを取り込み直してください。</div><div class="actions"><a class="btn ghost" href="#models">モデル解説</a><a class="btn" href="#settings">設定</a></div>';return}
-    route(); readWatch(); loadTier1(); autoRefresh(); if(MK!=='jp'&&!DS.jp&&cfg()) fetchData('jp'); return;
+    route(); readWatch(); autoRefresh(); if(MK!=='jp'&&!DS.jp&&cfg()) fetchData('jp'); return;
   }
   if(cfg()){ app.innerHTML='<div class="loading">'+MKN[MK]+'のデータを取得しています…（初回は20〜40秒ほどかかります）</div>'; if(await fetchData()){route();readWatch();if(MK!=='jp'&&!DS.jp) fetchData('jp');return} }
   if(location.hash!=='#settings') location.hash='settings'; else renderSettings();
 }
-function route(){ if(location.hash==='#models'){renderModels();return} if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#tier1'){renderTier1();return} if(location.hash==='#watch'){renderWatch('watch');return} if(location.hash==='#hold'){renderWatch('hold');return} if(location.hash==='#search'){renderSearch();return} const m=location.hash.match(/^#s-([0-9A-Za-z.\-]+)$/); if(m){renderDetail(m[1].toUpperCase());return} location.hash='hold'; }
+function route(){ if(location.hash==='#models'){renderModels();return} if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#watch'){renderWatch('watch');return} if(location.hash==='#hold'){renderWatch('hold');return} if(location.hash==='#search'){renderSearch();return} const m=location.hash.match(/^#s-([0-9A-Za-z.\-]+)$/); if(m){renderDetail(m[1].toUpperCase());return} location.hash='hold'; }
 let t; qEl.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{if(qEl.value.trim()){if(location.hash!=='#search')location.hash='search';else renderSearch()}else location.hash='hold'},120)});
 qEl.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=qEl.value.trim().toUpperCase().normalize('NFKC');const hk=v.padStart(4,'0')+'.HK';const exact=BY[v]?v:BY[hk]?hk:null;if(exact){location.hash='s-'+exact;return}const m=D.s.find(s=>s._key.includes(v.toLowerCase()));if(m)location.hash='s-'+m.code}});
 mkEl.addEventListener('change',async()=>{ MK=mkEl.value; store.set('shk-mk',MK); D=DS[MK]||null; H=D&&D.h; brand(); shown=100; qEl.value='';
