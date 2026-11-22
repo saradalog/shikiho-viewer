@@ -1175,13 +1175,16 @@ async function fetchData(m){
 // ここでは開示を判定しない。業種の集計は「決算明細」の伸び率（PCのPythonがXBRLから出した値）を数えて中央値を取るだけ。
 let TD=store.get('shk-tdnet',null)||{items:[],fins:[],notes:[],marks:{},at:0};
 const TDS={state:'init',err:null,busy:false,open:{}};
-const TDF=Object.assign({mine:false,star:false,unread:false,dir:'',hi:false,date:'',sec:'',win:20},store.get('shk-tdf',{}));
+const TDF=Object.assign({mine:false,star:false,unread:false,dir:'',hi:false,date:'',sec:'',win:20,mkt:'jp'},store.get('shk-tdf',{}));
+// 市場はコードの形で見分ける（日本＝4桁、香港＝.HK、それ以外＝米国ティッカー）。米国の方向コメントは「【米国】」で始まる
+const tdMkt=c=>/^[0-9][0-9A-Z]{3}$/.test(String(c||''))?'jp':/\.HK$/i.test(String(c||''))?'hk':'us';
+const tdNoteMkt=t=>/^【米国】/.test(t||'')?'us':/^【香港】/.test(t||'')?'hk':'jp';
 const tdSave=()=>store.set('shk-tdf',TDF);
 const tdItem=r=>({d:r[0],t:r[1],code:r[2],name:r[3],cap:r[4],kind:r[5],dir:r[6],imp:r[7],body:r[8],src:r[9],title:r[10],pdf:r[11]});
 const tdKey=o=>o.pdf||(o.d+'|'+o.code+'|'+o.title);
 const tdMark=k=>(TD.marks||{})[k]||[false,false,'',''];
 const tdDay=d=>d&&d.length>=8?(+d.slice(4,6))+'/'+(+d.slice(6,8)):'';
-function tdCap(m){ if(!isNum(m)) return ''; const o=m/100; return o>=10000?(o/10000).toFixed(1)+'兆円':Math.round(o).toLocaleString('ja-JP')+'億円'; }
+function tdCap(m,code){ if(!isNum(m)) return ''; const o=m/100; const u=tdMkt(code)==='jp'?'円':'ドル'; return o>=10000?(o/10000).toFixed(1)+'兆'+u:Math.round(o).toLocaleString('ja-JP')+'億'+u; } // 日本は百万円、米国は百万ドル
 function tdMine(){ const o={}; for(const r of W.rows||[]) o[r.code]=isHold(r)?'保有':'監視'; return o; }
 function tdMed(xs){ xs=xs.filter(isNum).sort((a,b)=>a-b); if(!xs.length) return null; const m=xs.length>>1; return xs.length%2?xs[m]:(xs[m-1]+xs[m])/2; }
 function tdPc(x){ return isNum(x)?(x>0?'+':'')+x.toFixed(1)+'%':'—'; }
@@ -1206,7 +1209,7 @@ function tdRow(o,mine){
   let h='<div class="td-row'+(m[0]?' read':'')+(own?' mine':'')+'">'+
     '<div class="td-h"><span class="pill '+cls+'">'+lab+(isNum(o.imp)?' '+o.imp:'')+'</span>'+link+'<b class="td-nm">'+esc(o.name)+'</b>'+(own?'<span class="pill '+(own==='保有'?'buy':'warn')+'">'+own+'</span>':'')+(m[1]?'<span class="td-star" aria-label="気になる">★</span>':'')+'</div>'+
     '<div class="td-b">'+esc(o.body||o.title)+'</div>'+
-    '<div class="small">'+esc([tdDay(o.d)+' '+(o.t||''),tdCap(o.cap),o.kind,o.src?'判定：'+o.src:''].filter(Boolean).join('・'))+'</div>'+
+    '<div class="small">'+esc([tdDay(o.d)+' '+(o.t||''),tdCap(o.cap,o.code),o.kind,o.src?'判定：'+o.src:''].filter(Boolean).join('・'))+'</div>'+
     (o.body&&o.title&&o.body!==o.title?'<div class="small td-title">'+esc(o.title)+'</div>':'')+
     (m[2]&&!TDS.open[k]?'<div class="td-memo">'+esc(m[2])+'</div>':'')+
     '<div class="td-a"><button class="btn ghost" data-td="read" data-k="'+esc(k)+'">'+(m[0]?'未読に戻す':'既読')+'</button>'+
@@ -1217,7 +1220,7 @@ function tdRow(o,mine){
   return h+'</div>';
 }
 function tdSectors(){ // 業種別：決算（前年同期比）と業績予想の修正
-  const fins=(TD.fins||[]).map(r=>({d:r[0],code:r[1],name:r[2],sec:r[3]||'不明',cap:r[4],kind:r[5],per:r[6],sg:r[7],pitem:r[8],pg:r[9]}));
+  const fins=(TD.fins||[]).map(r=>({d:r[0],code:r[1],name:r[2],sec:r[3]||'不明',cap:r[4],kind:r[5],per:r[6],sg:r[7],pitem:r[8],pg:r[9]})).filter(f=>tdMkt(f.code)===TDF.mkt);
   const days=[...new Set(fins.map(f=>f.d))].sort().reverse(); const use=new Set(days.slice(0,TDF.win));
   const fs=fins.filter(f=>use.has(f.d)); const by={};
   for(const f of fs){ const s=by[f.sec]||(by[f.sec]={sec:f.sec,k:[],up:0,dn:0}); if(f.kind==='決算') s.k.push(f); else if(isNum(f.pg)){ if(f.pg>0)s.up++; else if(f.pg<0)s.dn++; } }
@@ -1245,30 +1248,30 @@ function tdTrend(fins,sec){ // 週ごとの 増収の割合・増益の割合（
 function renderTdnet(){
   setTab('tdnet');
   const mine=tdMine();
-  const its=(TD.items||[]).map(tdItem).sort((a,b)=>(b.d+b.t).localeCompare(a.d+a.t)||((b.imp||0)-(a.imp||0)));
+  const its=(TD.items||[]).map(tdItem).filter(o=>tdMkt(o.code)===TDF.mkt).sort((a,b)=>(b.d+b.t).localeCompare(a.d+a.t)||((b.imp||0)-(a.imp||0)));
   const dates=[...new Set(its.map(o=>o.d))].sort().reverse();
-  let h='<div class="wsum"><select id="tdDate" aria-label="日付"><option value="">直近30日すべて</option>'+dates.map(d=>'<option value="'+d+'"'+(TDF.date===d?' selected':'')+'>'+tdDay(d)+'</option>').join('')+'</select>'+
+  let h='<div class="chips" style="margin-top:12px">'+[['jp','日本株'],['us','米国株（S&P500）']].map(([k,l])=>'<button class="chip" data-td="mkt" data-m="'+k+'" aria-pressed="'+(TDF.mkt===k)+'">'+l+'</button>').join('')+'</div><div class="wsum"><select id="tdDate" aria-label="日付"><option value="">直近30日すべて</option>'+dates.map(d=>'<option value="'+d+'"'+(TDF.date===d?' selected':'')+'>'+tdDay(d)+'</option>').join('')+'</select>'+
     '<span class="grow small">'+(TDS.busy?'読み込み中…':TD.at?new Date(TD.at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+' 時点':'')+'</span><button class="btn ghost" data-td="reload"'+(TDS.busy?' disabled':'')+'>更新</button></div>';
   if(TDS.state==='nocfg') h+='<div class="msg err">'+esc(errText({code:'nocfg'}))+'</div>';
   if(TDS.err) h+='<div class="msg err">'+esc(TDS.err)+'</div>';
-  if(!its.length&&!(TD.fins||[]).length){ h+='<div class="empty">'+(TDS.busy?'読み込んでいます…':'まだ開示のデータがありません。平日19時すぎに、Claudeの予定タスクが毎日書き込みます。')+'</div>'; app.innerHTML=h; return; }
+  if(!its.length&&!(TD.fins||[]).some(r=>tdMkt(r[1])===TDF.mkt)){ h+='<div class="empty">'+(TDS.busy?'読み込んでいます…':(TDF.mkt==='us'?'米国株の開示はまだありません。平日20時ごろに、Claudeの予定タスクが前日の米国分を書き込みます。':'まだ開示のデータがありません。平日19時すぎに、Claudeの予定タスクが毎日書き込みます。'))+'</div>'; app.innerHTML=h; return; }
 
   // 1) 業績の方向感（Claudeのコメント）
-  const notes=(TD.notes||[]).slice().sort((a,b)=>a[0]<b[0]?1:-1); const note=TDF.date?notes.find(n=>n[0]===TDF.date):notes[0];
-  if(note) h+='<section><h3>業績の方向感 <span class="small">'+tdDay(note[0])+'・Claude</span></h3><div class="theo td-note">'+esc(note[1])+'</div></section>';
+  const notes=(TD.notes||[]).filter(n=>tdNoteMkt(n[1])===TDF.mkt).sort((a,b)=>a[0]<b[0]?1:-1); const note=TDF.date?notes.find(n=>n[0]===TDF.date):notes[0];
+  if(note) h+='<section><h3>業績の方向感 <span class="small">'+tdDay(note[0])+'・Claude</span></h3><div class="theo td-note">'+esc(String(note[1]).replace(/^【(米国|香港)】\s*/,''))+'</div></section>';
 
   // 2) 業種別の表とグラフ
   const SX=tdSectors();
-  h+='<section><h3>業種別の決算と業績修正</h3><div class="chips">'+[5,20,60].map(n=>'<button class="chip" data-td="win" data-n="'+n+'" aria-pressed="'+(TDF.win===n)+'">直近'+n+'日</button>').join('')+'</div>'+
-    '<p class="small">'+(SX.from?tdDay(SX.from)+'〜の決算 '+SX.tot.n+'社：増収 '+(isNum(SX.tot.rev)?Math.round(SX.tot.rev)+'%':'—')+'（売上の伸び 中央値 '+tdPc(SX.tot.revMed)+'）・増益 '+(isNum(SX.tot.prof)?Math.round(SX.tot.prof)+'%':'—')+'（利益の伸び 中央値 '+tdPc(SX.tot.profMed)+'）／業績修正 上方 '+SX.tot.up+'・下方 '+SX.tot.dn:'決算のデータがまだありません')+'</p>';
+  h+='<section><h3>'+(TDF.mkt==='jp'?'業種別の決算と業績修正':'業種別の決算（S&P500）')+'</h3><div class="chips">'+[5,20,60].map(n=>'<button class="chip" data-td="win" data-n="'+n+'" aria-pressed="'+(TDF.win===n)+'">直近'+n+'日</button>').join('')+'</div>'+
+    '<p class="small">'+(SX.from?tdDay(SX.from)+'〜の決算 '+SX.tot.n+'社：増収 '+(isNum(SX.tot.rev)?Math.round(SX.tot.rev)+'%':'—')+'（売上の伸び 中央値 '+tdPc(SX.tot.revMed)+'）・増益 '+(isNum(SX.tot.prof)?Math.round(SX.tot.prof)+'%':'—')+'（利益の伸び 中央値 '+tdPc(SX.tot.profMed)+(TDF.mkt==='jp'?'）／業績修正 上方 '+SX.tot.up+'・下方 '+SX.tot.dn:'）'):'決算のデータがまだありません')+'</p>';
   if(SX.rows.length){
-    h+='<div class="td-sec"><div class="td-sh small"><span>業種（社数）</span><span>増収の割合</span><span>増益の割合</span><span>修正</span></div>'+SX.rows.map(r=>{
+    h+='<div class="td-sec"><div class="td-sh small"><span>業種（社数）</span><span>増収の割合</span><span>増益の割合</span><span>'+(TDF.mkt==='jp'?'修正':'')+'</span></div>'+SX.rows.map(r=>{
       const bar=(v,col)=>isNum(v)?'<span class="td-bar"><i style="width:'+v.toFixed(0)+'%;background:'+col+'"></i></span><span class="num">'+Math.round(v)+'%</span>':'<span class="small">—</span>';
       return '<button class="td-sr'+(TDF.sec===r.sec?' on':'')+'" data-td="sec" data-s="'+esc(r.sec)+'"><span>'+esc(r.sec)+' <span class="small">('+r.n+')</span></span>'+
         '<span class="td-cell">'+bar(r.rev,'var(--accent)')+'<span class="small">中央 '+tdPc(r.revMed)+'</span></span>'+
         '<span class="td-cell">'+bar(r.prof,'var(--fc)')+'<span class="small">中央 '+tdPc(r.profMed)+'</span></span>'+
-        '<span class="num"><span style="color:var(--up)">↑'+r.up+'</span> <span style="color:var(--down)">↓'+r.dn+'</span></span></button>'; }).join('')+'</div>'+
-      '<p class="small">社数が5社未満の業種は、割合が大きく振れるので参考程度に。行を押すと、下のグラフがその業種になります。</p>';
+        (TDF.mkt==='jp'?'<span class="num"><span style="color:var(--up)">↑'+r.up+'</span> <span style="color:var(--down)">↓'+r.dn+'</span></span>':'<span></span>')+'</button>'; }).join('')+'</div>'+
+      '<p class="small">社数が5社未満の業種は、割合が大きく振れるので参考程度に。行を押すと、下のグラフがその業種になります。'+(TDF.mkt==='us'?'米国はSECの四半期報告書（10-Q・10-K）の提出日で数えるので、決算発表から数週間遅れます。ガイダンスの上げ下げは下の開示一覧（Claudeが決算発表を読んだもの）で見てください。':'')+'</p>';
   }
   h+='<h3 style="font-size:15px">週ごとの推移 <span class="small">'+(TDF.sec?esc(TDF.sec)+' <button class="chip" data-td="sec" data-s="">全業種に戻す</button>':'全業種')+'</span></h3>'+tdTrend(SX.fins,TDF.sec)+'</section>';
 
@@ -1286,7 +1289,7 @@ function renderTdnet(){
   const chip=(k,lab,v)=>'<button class="chip" data-td="flt" data-f="'+k+'"'+(v!==undefined?' data-v="'+v+'"':'')+' aria-pressed="'+(v!==undefined?TDF[k]===v:!!TDF[k])+'">'+lab+'</button>';
   h+='<section><h3>開示の一覧 <span class="small">'+list.length+'件</span></h3><div class="chips">'+chip('hi','重要度4以上')+chip('dir','プラス','良い')+chip('dir','マイナス','悪い')+chip('mine','保有・監視')+chip('star','★気になる')+chip('unread','未読だけ')+'</div>'+
     (list.length?list.slice(0,200).map(o=>tdRow(o,mine)).join(''):'<div class="empty">条件に合う開示はありません。</div>')+'</section>';
-  h+='<p class="small">数字の判定（業績修正・配当・決算短信・自社株買い）はPCのPythonがXBRLから出したもの、それ以外はClaudeが本文を読んで判定したもの（判定元に表示）。このアプリでは判定し直さない。</p>';
+  h+='<p class="small">数字の判定（業績修正・配当・決算短信・自社株買い）はPCのPythonがXBRL（日本はTDnet、米国はSECの10-Q・10-K）から出したもの、それ以外はClaudeが本文を読んで判定したもの（判定元に表示）。このアプリでは判定し直さない。</p>';
   app.innerHTML=h;
 }
 async function tdSetMark(k,code,patch){
@@ -1299,6 +1302,7 @@ app.addEventListener('click',e=>{ const b=e.target.closest('[data-td]'); if(!b||
   const a=b.dataset.td, k=b.dataset.k;
   const it=k?(TD.items||[]).map(tdItem).find(o=>tdKey(o)===k):null, code=it?it.code:'';
   if(a==='reload') readTdnet(true);
+  else if(a==='mkt'){ TDF.mkt=b.dataset.m; TDF.date=''; TDF.sec=''; tdSave(); renderTdnet(); }
   else if(a==='win'){ TDF.win=+b.dataset.n; tdSave(); renderTdnet(); }
   else if(a==='sec'){ TDF.sec=TDF.sec===b.dataset.s?'':b.dataset.s; tdSave(); renderTdnet(); }
   else if(a==='flt'){ const f=b.dataset.f; if(b.dataset.v!==undefined) TDF[f]=TDF[f]===b.dataset.v?'':b.dataset.v; else TDF[f]=!TDF[f]; tdSave(); renderTdnet(); }
