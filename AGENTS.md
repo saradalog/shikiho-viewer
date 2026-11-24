@@ -11,7 +11,7 @@
 
 | 場所 | 中身 |
 |---|---|
-| このリポジトリ（公開） | 画面だけ（`kaiji/` は別アプリ「適時開示ウォッチ」）：`index.html`（HTML・CSS・JS 1枚、ビルド不要）、`sw.js`、`manifest.webmanifest`、`icons/`、`sectors.json`（コード→東証17業種、業種内回帰用） |
+| このリポジトリ（公開） | 画面だけ（`kaiji/` は移転案内だけ）：`index.html`（HTML・CSS・JS 1枚、ビルド不要）、`sw.js`、`manifest.webmanifest`、`icons/`、`sectors.json`（コード→東証17業種、業種内回帰用） |
 | 非公開リポジトリ `saradalog/global-shikiho` | シートを作る・毎日更新する Python（J-Quants・Yahoo Finance・EDINET） |
 | Googleスプレッドシート | 「四季報 2026年4集 2580銘柄 年度比較」（日本株）、米国株・香港株の年度比較、「四季報ビューア 監視銘柄」（監視・保有・投資ストーリー） |
 | Apps Script（`Code.gs`） | シートのデータをアプリに返す・監視リストを保存する。コードは非公開リポジトリ `saradalog/global-shikiho` の `apps_script/shikiho_viewer_Code.gs`（合言葉は `'ここに合言葉'` に伏せてある）。直したら持ち主が Apps Script エディタに貼り、合言葉を入れ直して「新しいバージョン」でデプロイし直す。このリポジトリには置かない |
@@ -80,3 +80,4 @@
 - 2026-11-22：開示タブに市場の切り替え（日本株／米国株（S&P500））を追加（v47）。市場はコードの形で見分ける（4桁＝日本、`.HK`＝香港、それ以外＝米国ティッカー）。米国の行は同じタブ「開示ウォッチ」「決算明細」に入り、時価総額は**百万ドル**（日本は百万円）。米国の方向コメントは「方向コメント」タブで本文が「【米国】」で始まる行。米国には業績予想の修正の開示が無いので、修正の列は出さない。米国の決算明細はSECの10-Q・10-K（提出日基準）。書くのは予定タスク「米国株の開示の判定と方向感」（平日。PCの `us_watch.py` が集めたもの）。
 - 2026-11-22：開示タブに香港株（ハンセン指数）を追加（v48）。行は同じタブに入り、コードは `0700.HK` の形、時価総額は**百万香港ドル**、方向コメントは「【香港】」で始まる行。香港にはXBRLが無いので、開示の判定も「決算明細」の数字もClaudeが決算発表を読んで入れたもの。書くのは予定タスク「香港株の開示の判定と方向感」（平日。PCの `hk_watch.py` が HKEXnews から集めたもの）。
 - 2026-11-24：持ち主の指示で「開示」タブを四季報ビューアから外し、別アプリ「適時開示ウォッチ」（`kaiji/`、https://saradalog.github.io/shikiho-viewer/kaiji/ ）として独立させた（四季報ビューアは v49）。中身は v48 の開示タブと同じで、Apps Script も同じ（`tdnet`・`tdnetMark`、保有・監視の印に `list`）。同じ saradalog.github.io なので `shk-cfg`・`shk-tdnet`・`shk-tdf`・`shk-watch` は両アプリで共有。`kaiji/` は自分の `sw.js`（`kaiji-shell-vN`、画面を直したら+1）・`manifest.webmanifest`・アイコン（赤地に「開」）を持つ。銘柄コードを押すと四季報ビューアの `../#s-コード` を開く。四季報ビューアの `#tdnet` は `kaiji/` へ飛ばす。ルートの `sw.js` は `/kaiji/` を受け持たず、`shikiho-shell-*` 以外のキャッシュを消さない。
+- 2026-11-24（続き）：`kaiji/` の下だと四季報ビューアの範囲に入り、AndroidのChromeが別アプリとして入れられなかったため、適時開示ウォッチを別リポジトリ `saradalog/kaiji-watch`（https://saradalog.github.io/kaiji-watch/ ）へ移した（四季報ビューア v50）。`kaiji/` には新しい場所へ飛ばす `index.html` と、古い登録を外すだけの `sw.js` を残している。開示の画面を直すときは `kaiji-watch` 側を直す。

@@ -1,16 +1,3 @@
-// 適時開示ウォッチ：画面の部品だけをキャッシュ（開示のデータは毎回 Apps Script から取得し、localStorage に保存）
-const CACHE = 'kaiji-shell-v1';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
-self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
-// 四季報ビューアのキャッシュ（shikiho-shell-*）は消さない
-self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('kaiji-shell-') && k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
-self.addEventListener('fetch', e => {
-  const u = new URL(e.request.url);
-  if (e.request.method !== 'GET') return;
-  if (u.origin === location.origin && u.pathname.startsWith(new URL('./', self.registration.scope).pathname)) {
-    e.respondWith(fetch(e.request).then(r => { const cp = r.clone(); caches.open(CACHE).then(c => c.put(e.request, cp)); return r; })
-      .catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match('./index.html'))));
-  } else if (u.hostname === 'fonts.googleapis.com' || u.hostname === 'fonts.gstatic.com') {
-    e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => { const cp = res.clone(); caches.open(CACHE).then(c => c.put(e.request, cp)); return res; })));
-  }
-});
+// 適時開示ウォッチは https://saradalog.github.io/kaiji-watch/ へ移った。古い登録を自分で外す
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('kaiji-shell-')).map(k => caches.delete(k)))).then(() => self.registration.unregister())); });

@@ -1145,7 +1145,7 @@ async function fetchData(m){
   catch(e){ S.busy=false; S.msg={t:'データを取得できませんでした。'+errText(e),err:true}; return false; }
   finally{ if(location.hash==='#settings') renderSettings(); }
 }
-// 適時開示ウォッチは 2026-11-24 に別アプリ（kaiji/）へ独立した
+// 適時開示ウォッチは 2026-11-24 に別アプリ（saradalog/kaiji-watch）へ独立した
 function renderModels(){
   setTab('models');
   const map=[
@@ -1185,7 +1185,7 @@ function renderSettings(){
     '<p class="small" style="margin:0">データはこの端末に保存され、オフラインでも見られます。元のスプレッドシートを更新したら下のボタンで取り込み直してください。</p>'+
     '<div class="actions"><button class="btn ghost" data-act="data-refresh"'+(S.busy||!cfg()?' disabled':'')+'>'+MKN[MK]+'のデータを取り込み直す</button></div></div></section>';
   h+='<section><h3>ホーム画面に追加</h3><div class="theo small"><span>iPhone：Safariでこのページを開き、共有ボタン →「ホーム画面に追加」。</span><span>Android：Chromeのメニュー（︙）→「ホーム画面に追加」または「アプリをインストール」。</span></div></section>';
-  h+='<p class="small"><a href="'+SHEET_URL+'">監視銘柄のスプレッドシートを開く</a>　<a href="kaiji/">適時開示ウォッチ（別アプリ）を開く</a></p>';
+  h+='<p class="small"><a href="'+SHEET_URL+'">監視銘柄のスプレッドシートを開く</a>　<a href="https://saradalog.github.io/kaiji-watch/">適時開示ウォッチ（別アプリ）を開く</a></p>';
   app.innerHTML=h;
 }
 app.addEventListener('click',async e=>{const b=e.target.closest('button[data-act]'); if(!b) return; const a=b.dataset.act;
@@ -1229,7 +1229,7 @@ async function boot(){
   if(cfg()){ app.innerHTML='<div class="loading">'+MKN[MK]+'のデータを取得しています…（初回は20〜40秒ほどかかります）</div>'; if(await fetchData()){route();readWatch();if(MK!=='jp'&&!DS.jp) fetchData('jp');return} }
   if(location.hash!=='#settings') location.hash='settings'; else renderSettings();
 }
-function route(){ if(location.hash==='#models'){renderModels();return} if(location.hash==='#tdnet'){location.href='kaiji/';return} if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#watch'){renderWatch('watch');return} if(location.hash==='#hold'){renderWatch('hold');return} if(location.hash==='#search'){renderSearch();return} const m=location.hash.match(/^#s-([0-9A-Za-z.\-]+)$/); if(m){renderDetail(m[1].toUpperCase());return} location.hash='hold'; }
+function route(){ if(location.hash==='#models'){renderModels();return} if(location.hash==='#tdnet'){location.href='https://saradalog.github.io/kaiji-watch/';return} if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#watch'){renderWatch('watch');return} if(location.hash==='#hold'){renderWatch('hold');return} if(location.hash==='#search'){renderSearch();return} const m=location.hash.match(/^#s-([0-9A-Za-z.\-]+)$/); if(m){renderDetail(m[1].toUpperCase());return} location.hash='hold'; }
 let t; qEl.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{if(qEl.value.trim()){if(location.hash!=='#search')location.hash='search';else renderSearch()}else location.hash='hold'},120)});
 qEl.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=qEl.value.trim().toUpperCase().normalize('NFKC');const hk=v.padStart(4,'0')+'.HK';const exact=BY[v]?v:BY[hk]?hk:null;if(exact){location.hash='s-'+exact;return}const m=D.s.find(s=>s._key.includes(v.toLowerCase()));if(m)location.hash='s-'+m.code}});
 mkEl.addEventListener('change',async()=>{ MK=mkEl.value; store.set('shk-mk',MK); D=DS[MK]||null; H=D&&D.h; brand(); shown=100; qEl.value='';
