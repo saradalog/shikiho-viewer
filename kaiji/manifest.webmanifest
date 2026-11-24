@@ -1,0 +1,17 @@
+{
+  "name": "適時開示ウォッチ",
+  "short_name": "開示",
+  "description": "日本・米国・香港の適時開示と業績の方向感（Claudeの判定）を見る",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f6f2",
+  "theme_color": "#8a2b2b",
+  "lang": "ja",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

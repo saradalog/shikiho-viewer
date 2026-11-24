@@ -117,31 +117,6 @@ tr:last-child td{border-bottom:0}
 #wcount:empty{display:none}
 #hcount{margin-left:6px;font-size:11px;color:var(--surface);background:var(--accent);border-radius:999px;padding:0 6px}
 #hcount:empty{display:none}
-#tdcount{margin-left:6px;font-size:11px;color:#fff;background:var(--down);border-radius:999px;padding:0 6px}
-#tdcount:empty{display:none}
-.td-row{border-bottom:1px solid var(--rule);padding:10px 2px;display:grid;gap:4px}
-.td-row.read{opacity:.62}
-.td-row.mine{border-left:3px solid var(--accent);padding-left:8px}
-.td-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.td-nm{font-weight:700}
-.td-star{color:#c9a000}
-.td-b{font-size:14px;overflow-wrap:anywhere}
-.td-title{overflow-wrap:anywhere}
-.td-memo{font-size:13px;background:var(--fc-soft);border-radius:6px;padding:4px 8px;white-space:pre-wrap}
-.td-a{display:flex;gap:6px;flex-wrap:wrap}
-.td-a .btn{padding:3px 10px;font-size:12px;text-decoration:none}
-.td-edit{display:grid;gap:6px}
-.td-edit textarea{width:100%;padding:8px;border:1px solid var(--rule);border-radius:8px;background:var(--surface);font:inherit}
-.td-note{white-space:pre-wrap;font-size:14px;display:block}
-.td-sec{border-top:1px solid var(--rule)}
-.td-sh,.td-sr{display:grid;grid-template-columns:minmax(0,1.3fr) 1fr 1fr 52px;gap:8px;align-items:center;padding:6px 2px}
-.td-sr{width:100%;border:0;border-bottom:1px solid var(--rule);background:none;text-align:left;cursor:pointer;font-size:13px}
-.td-sr.on{background:var(--act-soft)}
-.td-cell{display:grid;grid-template-columns:1fr auto;gap:0 6px;align-items:center}
-.td-cell .small{grid-column:1/-1}
-.td-bar{display:block;height:8px;background:var(--rule);border-radius:4px;overflow:hidden}
-.td-bar i{display:block;height:100%}
-#tdDate{padding:6px 8px;border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
 .pill{display:inline-block;font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;white-space:nowrap}
 .pill.buy{background:var(--buy-soft);color:var(--up)}
 .pill.sell{background:var(--sell-soft);color:var(--down)}
@@ -257,7 +232,7 @@ html{-webkit-tap-highlight-color:transparent}
 <body>
 <header class="top"><div class="wrap">
   <div class="brand"><h1>四季報ビューア</h1><span id="brand-sub">日本株データ</span></div>
-  <nav class="tabs" aria-label="画面切り替え"><a href="#hold" id="t-hold">保有銘柄<span id="hcount" class="cnt"></span></a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#tdnet" id="t-tdnet">開示<span id="tdcount"></span></a><a href="#models" id="t-models">モデル解説</a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
+  <nav class="tabs" aria-label="画面切り替え"><a href="#hold" id="t-hold">保有銘柄<span id="hcount" class="cnt"></span></a><a href="#watch" id="t-watch">監視銘柄<span id="wcount"></span></a><a href="#models" id="t-models">モデル解説</a><a href="#settings" id="t-settings" style="margin-left:auto">設定</a></nav>
   <div class="searchrow">
     <select id="mk" aria-label="市場"><option value="jp">日本株</option><option value="us">米国株</option><option value="hk">中国株（香港）</option></select>
     <input id="q" type="search" placeholder="コード・ティッカー・銘柄名で検索" autocomplete="off" aria-label="銘柄を検索">
@@ -1151,7 +1126,7 @@ function watchBox(code){
   if(o&&isHold(o)||holdOf(code)) h+='<div class="theo" style="margin-top:12px">'+storyBox(code)+'</div>';
   return h;
 }
-function setTab(t){for(const k of ['hold','watch','tdnet','models','settings']){const el=document.getElementById('t-'+k); if(el) el.setAttribute('aria-current',t===k?'page':'false')}}
+function setTab(t){for(const k of ['hold','watch','models','settings']){const el=document.getElementById('t-'+k); if(el) el.setAttribute('aria-current',t===k?'page':'false')}}
 app.addEventListener('click',async e=>{const b=e.target.closest('button[data-act]'); if(!b) return; e.preventDefault(); const a=b.dataset.act, c=b.dataset.code;
   if(a==='reload'){W.msg=null;readWatch()} else if(a==='add') addWatch(c); else if(a==='addhold') addHold(c); else if(a==='save') saveWatch(c); else if(a==='savehold') saveHold(c);
   else if(a==='remove'){ if(b.dataset.confirm){removeWatch(c)} else {b.dataset.confirm='1';b.textContent='本当に外す（もう一度押す）'} } });
@@ -1170,148 +1145,7 @@ async function fetchData(m){
   catch(e){ S.busy=false; S.msg={t:'データを取得できませんでした。'+errText(e),err:true}; return false; }
   finally{ if(location.hash==='#settings') renderSettings(); }
 }
-// ===== 適時開示ウォッチ（2026-11-20）=====
-// Claudeの予定タスク「適時開示の判定と方向感」が監視シートの「開示ウォッチ」「決算明細」「方向コメント」に書いたものを表示するだけ。
-// ここでは開示を判定しない。業種の集計は「決算明細」の伸び率（PCのPythonがXBRLから出した値）を数えて中央値を取るだけ。
-let TD=store.get('shk-tdnet',null)||{items:[],fins:[],notes:[],marks:{},at:0};
-const TDS={state:'init',err:null,busy:false,open:{}};
-const TDF=Object.assign({mine:false,star:false,unread:false,dir:'',hi:false,date:'',sec:'',win:20,mkt:'jp'},store.get('shk-tdf',{}));
-// 市場はコードの形で見分ける（日本＝4桁、香港＝.HK、それ以外＝米国ティッカー）。米国の方向コメントは「【米国】」で始まる
-const tdMkt=c=>/^[0-9][0-9A-Z]{3}$/.test(String(c||''))?'jp':/\.HK$/i.test(String(c||''))?'hk':'us';
-const tdNoteMkt=t=>/^【米国】/.test(t||'')?'us':/^【香港】/.test(t||'')?'hk':'jp';
-const tdSave=()=>store.set('shk-tdf',TDF);
-const tdItem=r=>({d:r[0],t:r[1],code:r[2],name:r[3],cap:r[4],kind:r[5],dir:r[6],imp:r[7],body:r[8],src:r[9],title:r[10],pdf:r[11]});
-const tdKey=o=>o.pdf||(o.d+'|'+o.code+'|'+o.title);
-const tdMark=k=>(TD.marks||{})[k]||[false,false,'',''];
-const tdDay=d=>d&&d.length>=8?(+d.slice(4,6))+'/'+(+d.slice(6,8)):'';
-function tdCap(m,code){ if(!isNum(m)) return ''; const o=m/100; const mk=tdMkt(code), u=mk==='jp'?'円':mk==='hk'?'香港ドル':'ドル'; return o>=10000?(o/10000).toFixed(1)+'兆'+u:Math.round(o).toLocaleString('ja-JP')+'億'+u; } // 日本は百万円、米国は百万ドル、香港は百万香港ドル
-function tdMine(){ const o={}; for(const r of W.rows||[]) o[r.code]=isHold(r)?'保有':'監視'; return o; }
-function tdMed(xs){ xs=xs.filter(isNum).sort((a,b)=>a-b); if(!xs.length) return null; const m=xs.length>>1; return xs.length%2?xs[m]:(xs[m-1]+xs[m])/2; }
-function tdPc(x){ return isNum(x)?(x>0?'+':'')+x.toFixed(1)+'%':'—'; }
-async function readTdnet(force){
-  if(TDS.busy) return; if(!force&&TD.at&&Date.now()-TD.at<10*60e3) return;
-  if(!cfg()){TDS.state='nocfg'; return}
-  TDS.busy=true; if(location.hash==='#tdnet') renderTdnet();
-  try{ const j=await api('tdnet',null,{days:90}); TD={items:j.items||[],fins:j.fins||[],notes:j.notes||[],marks:j.marks||{},at:Date.now()}; store.set('shk-tdnet',TD); TDS.state='ok'; TDS.err=null; }
-  catch(e){ TDS.state='err'; TDS.err=(e.code==='api'&&/unknown_action/.test(e.message||''))?'Apps Script（Code.gs）が古いため開示を読めません。新しいCode.gsを貼り替えて「新しいバージョン」でデプロイしてください。':errText(e); }
-  finally{ TDS.busy=false; tdCount(); if(location.hash==='#tdnet') renderTdnet(); }
-}
-function tdCount(){ // 最新日の、未読で（保有・監視 または 重要度4以上）の件数
-  const el=document.getElementById('tdcount'); if(!el) return;
-  const its=(TD.items||[]).map(tdItem); const last=its.reduce((a,o)=>o.d>a?o.d:a,''); const mine=tdMine();
-  const n=its.filter(o=>o.d===last&&!tdMark(tdKey(o))[0]&&(mine[o.code]||(isNum(o.imp)&&o.imp>=4&&o.dir!=='中立'))).length;
-  el.textContent=n?String(n):'';
-}
-function tdRow(o,mine){
-  const k=tdKey(o), m=tdMark(k), own=mine[o.code];
-  const cls=o.dir==='良い'?'buy':o.dir==='悪い'?'sell':'hold', lab=o.dir==='良い'?'プラス':o.dir==='悪い'?'マイナス':'中立';
-  const link=BY[o.code]?'<a class="code" href="#s-'+esc(o.code)+'">'+esc(o.code)+'</a>':'<span class="code">'+esc(o.code)+'</span>';
-  let h='<div class="td-row'+(m[0]?' read':'')+(own?' mine':'')+'">'+
-    '<div class="td-h"><span class="pill '+cls+'">'+lab+(isNum(o.imp)?' '+o.imp:'')+'</span>'+link+'<b class="td-nm">'+esc(o.name)+'</b>'+(own?'<span class="pill '+(own==='保有'?'buy':'warn')+'">'+own+'</span>':'')+(m[1]?'<span class="td-star" aria-label="気になる">★</span>':'')+'</div>'+
-    '<div class="td-b">'+esc(o.body||o.title)+'</div>'+
-    '<div class="small">'+esc([tdDay(o.d)+' '+(o.t||''),tdCap(o.cap,o.code),o.kind,o.src?'判定：'+o.src:''].filter(Boolean).join('・'))+'</div>'+
-    (o.body&&o.title&&o.body!==o.title?'<div class="small td-title">'+esc(o.title)+'</div>':'')+
-    (m[2]&&!TDS.open[k]?'<div class="td-memo">'+esc(m[2])+'</div>':'')+
-    '<div class="td-a"><button class="btn ghost" data-td="read" data-k="'+esc(k)+'">'+(m[0]?'未読に戻す':'既読')+'</button>'+
-    '<button class="btn ghost" data-td="star" data-k="'+esc(k)+'">'+(m[1]?'★ 外す':'☆ 気になる')+'</button>'+
-    '<button class="btn ghost" data-td="memo" data-k="'+esc(k)+'">メモ</button>'+
-    (o.pdf?'<a class="btn ghost" href="'+esc(o.pdf)+'" target="_blank" rel="noopener">PDF</a>':'')+'</div>';
-  if(TDS.open[k]) h+='<div class="td-edit"><textarea id="tdm-'+esc(k.replace(/[^0-9A-Za-z]/g,''))+'" rows="3" placeholder="この開示についてのメモ">'+esc(m[2])+'</textarea><button class="btn" data-td="memosave" data-k="'+esc(k)+'" data-code="'+esc(o.code)+'">メモを保存</button></div>';
-  return h+'</div>';
-}
-function tdSectors(){ // 業種別：決算（前年同期比）と業績予想の修正
-  const fins=(TD.fins||[]).map(r=>({d:r[0],code:r[1],name:r[2],sec:r[3]||'不明',cap:r[4],kind:r[5],per:r[6],sg:r[7],pitem:r[8],pg:r[9]})).filter(f=>tdMkt(f.code)===TDF.mkt);
-  const days=[...new Set(fins.map(f=>f.d))].sort().reverse(); const use=new Set(days.slice(0,TDF.win));
-  const fs=fins.filter(f=>use.has(f.d)); const by={};
-  for(const f of fs){ const s=by[f.sec]||(by[f.sec]={sec:f.sec,k:[],up:0,dn:0}); if(f.kind==='決算') s.k.push(f); else if(isNum(f.pg)){ if(f.pg>0)s.up++; else if(f.pg<0)s.dn++; } }
-  const rows=Object.values(by).map(s=>{ const sg=s.k.filter(f=>isNum(f.sg)), pg=s.k.filter(f=>isNum(f.pg));
-    return {sec:s.sec,n:s.k.length,rev:sg.length?sg.filter(f=>f.sg>0).length/sg.length*100:null,revMed:tdMed(sg.map(f=>f.sg)),prof:pg.length?pg.filter(f=>f.pg>0).length/pg.length*100:null,profMed:tdMed(pg.map(f=>f.pg)),up:s.up,dn:s.dn}; })
-    .sort((a,b)=>b.n-a.n);
-  const allK=fs.filter(f=>f.kind==='決算'), sgA=allK.filter(f=>isNum(f.sg)), pgA=allK.filter(f=>isNum(f.pg));
-  const tot={n:allK.length,rev:sgA.length?sgA.filter(f=>f.sg>0).length/sgA.length*100:null,revMed:tdMed(sgA.map(f=>f.sg)),prof:pgA.length?pgA.filter(f=>f.pg>0).length/pgA.length*100:null,profMed:tdMed(pgA.map(f=>f.pg)),
-    up:fs.filter(f=>f.kind!=='決算'&&isNum(f.pg)&&f.pg>0).length,dn:fs.filter(f=>f.kind!=='決算'&&isNum(f.pg)&&f.pg<0).length};
-  return {rows,tot,from:days.slice(0,TDF.win).pop()||'',fins};
-}
-function tdTrend(fins,sec){ // 週ごとの 増収の割合・増益の割合（決算のみ。社数5社未満の週は点を打たない）
-  const wk=d=>{const t=new Date(+d.slice(0,4),+d.slice(4,6)-1,+d.slice(6,8)); const w=(t.getDay()+6)%7; t.setDate(t.getDate()-w); return t.getFullYear()+String(t.getMonth()+1).padStart(2,'0')+String(t.getDate()).padStart(2,'0');};
-  const g={}; for(const f of fins){ if(f.kind!=='決算'||(sec&&f.sec!==sec)) continue; const k=wk(f.d); const o=g[k]||(g[k]={k,s:[],p:[]}); if(isNum(f.sg))o.s.push(f.sg); if(isNum(f.pg))o.p.push(f.pg); }
-  const pts=Object.values(g).sort((a,b)=>a.k<b.k?-1:1).map(o=>({k:o.k,n:Math.max(o.s.length,o.p.length),rev:o.s.length>=5?o.s.filter(x=>x>0).length/o.s.length*100:null,prof:o.p.length>=5?o.p.filter(x=>x>0).length/o.p.length*100:null}));
-  if(!pts.length) return '<p class="small">まだ週ごとの点を打てるだけの決算がありません。</p>';
-  const Wd=340,Hd=150,L=30,R=8,T=10,B=26, x=i=>L+(pts.length===1?(Wd-L-R)/2:i*(Wd-L-R)/(pts.length-1)), y=v=>T+(100-v)*(Hd-T-B)/100;
-  const line=(key,col)=>{ let d='',dots=''; pts.forEach((p,i)=>{ if(!isNum(p[key])){ return } d+=(d?'L':'M')+x(i).toFixed(1)+' '+y(p[key]).toFixed(1); dots+='<circle cx="'+x(i).toFixed(1)+'" cy="'+y(p[key]).toFixed(1)+'" r="3" fill="'+col+'"><title>'+tdDay(p.k)+'週 '+Math.round(p[key])+'%（'+p.n+'社）</title></circle>'; }); return '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2"/>'+dots; };
-  let s='<svg viewBox="0 0 '+Wd+' '+Hd+'" role="img" aria-label="週ごとの増収・増益の割合" style="width:100%;max-width:520px;height:auto">';
-  for(const v of [0,50,100]) s+='<line x1="'+L+'" x2="'+(Wd-R)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="var(--rule)"/><text x="'+(L-4)+'" y="'+(y(v)+4)+'" font-size="10" text-anchor="end" fill="var(--muted)">'+v+'%</text>';
-  const step=Math.max(1,Math.ceil(pts.length/6)); pts.forEach((p,i)=>{ if(i%step===0||i===pts.length-1) s+='<text x="'+x(i)+'" y="'+(Hd-8)+'" font-size="10" text-anchor="'+(i===pts.length-1&&pts.length>1?'end':'middle')+'" fill="var(--muted)">'+tdDay(p.k)+'</text>'; });
-  s+=line('rev','var(--accent)')+line('prof','var(--fc)')+'</svg>';
-  return s+'<div class="legend small"><span style="white-space:nowrap"><i style="background:var(--accent)"></i>増収の割合</span> <span style="white-space:nowrap"><i style="background:var(--fc)"></i>増益の割合</span></div><p class="small">横軸は週の初日（月曜）。その週に決算を出した会社のうち、増収・増益だった割合。</p>';
-}
-function renderTdnet(){
-  setTab('tdnet');
-  const mine=tdMine();
-  const its=(TD.items||[]).map(tdItem).filter(o=>tdMkt(o.code)===TDF.mkt).sort((a,b)=>(b.d+b.t).localeCompare(a.d+a.t)||((b.imp||0)-(a.imp||0)));
-  const dates=[...new Set(its.map(o=>o.d))].sort().reverse();
-  let h='<div class="chips" style="margin-top:12px">'+[['jp','日本株'],['us','米国株（S&P500）'],['hk','香港株（ハンセン指数）']].map(([k,l])=>'<button class="chip" data-td="mkt" data-m="'+k+'" aria-pressed="'+(TDF.mkt===k)+'">'+l+'</button>').join('')+'</div><div class="wsum"><select id="tdDate" aria-label="日付"><option value="">直近30日すべて</option>'+dates.map(d=>'<option value="'+d+'"'+(TDF.date===d?' selected':'')+'>'+tdDay(d)+'</option>').join('')+'</select>'+
-    '<span class="grow small">'+(TDS.busy?'読み込み中…':TD.at?new Date(TD.at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+' 時点':'')+'</span><button class="btn ghost" data-td="reload"'+(TDS.busy?' disabled':'')+'>更新</button></div>';
-  if(TDS.state==='nocfg') h+='<div class="msg err">'+esc(errText({code:'nocfg'}))+'</div>';
-  if(TDS.err) h+='<div class="msg err">'+esc(TDS.err)+'</div>';
-  if(!its.length&&!(TD.fins||[]).some(r=>tdMkt(r[1])===TDF.mkt)){ h+='<div class="empty">'+(TDS.busy?'読み込んでいます…':(TDF.mkt==='us'?'米国株の開示はまだありません。平日20時ごろに、Claudeの予定タスクが前日の米国分を書き込みます。':TDF.mkt==='hk'?'香港株の開示はまだありません。平日20時すぎに、Claudeの予定タスクが書き込みます。':'まだ開示のデータがありません。平日19時すぎに、Claudeの予定タスクが毎日書き込みます。'))+'</div>'; app.innerHTML=h; return; }
-
-  // 1) 業績の方向感（Claudeのコメント）
-  const notes=(TD.notes||[]).filter(n=>tdNoteMkt(n[1])===TDF.mkt).sort((a,b)=>a[0]<b[0]?1:-1); const note=TDF.date?notes.find(n=>n[0]===TDF.date):notes[0];
-  if(note) h+='<section><h3>業績の方向感 <span class="small">'+tdDay(note[0])+'・Claude</span></h3><div class="theo td-note">'+esc(String(note[1]).replace(/^【(米国|香港)】\s*/,''))+'</div></section>';
-
-  // 2) 業種別の表とグラフ
-  const SX=tdSectors();
-  h+='<section><h3>'+(TDF.mkt==='jp'?'業種別の決算と業績修正':TDF.mkt==='us'?'業種別の決算（S&P500）':'業種別の決算（ハンセン指数）')+'</h3><div class="chips">'+[5,20,60].map(n=>'<button class="chip" data-td="win" data-n="'+n+'" aria-pressed="'+(TDF.win===n)+'">直近'+n+'日</button>').join('')+'</div>'+
-    '<p class="small">'+(SX.from?tdDay(SX.from)+'〜の決算 '+SX.tot.n+'社：増収 '+(isNum(SX.tot.rev)?Math.round(SX.tot.rev)+'%':'—')+'（売上の伸び 中央値 '+tdPc(SX.tot.revMed)+'）・増益 '+(isNum(SX.tot.prof)?Math.round(SX.tot.prof)+'%':'—')+'（利益の伸び 中央値 '+tdPc(SX.tot.profMed)+(TDF.mkt==='jp'?'）／業績修正 上方 '+SX.tot.up+'・下方 '+SX.tot.dn:'）'):'決算のデータがまだありません')+'</p>';
-  if(SX.rows.length){
-    h+='<div class="td-sec"><div class="td-sh small"><span>業種（社数）</span><span>増収の割合</span><span>増益の割合</span><span>'+(TDF.mkt==='jp'?'修正':'')+'</span></div>'+SX.rows.map(r=>{
-      const bar=(v,col)=>isNum(v)?'<span class="td-bar"><i style="width:'+v.toFixed(0)+'%;background:'+col+'"></i></span><span class="num">'+Math.round(v)+'%</span>':'<span class="small">—</span>';
-      return '<button class="td-sr'+(TDF.sec===r.sec?' on':'')+'" data-td="sec" data-s="'+esc(r.sec)+'"><span>'+esc(r.sec)+' <span class="small">('+r.n+')</span></span>'+
-        '<span class="td-cell">'+bar(r.rev,'var(--accent)')+'<span class="small">中央 '+tdPc(r.revMed)+'</span></span>'+
-        '<span class="td-cell">'+bar(r.prof,'var(--fc)')+'<span class="small">中央 '+tdPc(r.profMed)+'</span></span>'+
-        (TDF.mkt==='jp'?'<span class="num"><span style="color:var(--up)">↑'+r.up+'</span> <span style="color:var(--down)">↓'+r.dn+'</span></span>':'<span></span>')+'</button>'; }).join('')+'</div>'+
-      '<p class="small">社数が5社未満の業種は、割合が大きく振れるので参考程度に。行を押すと、下のグラフがその業種になります。'+(TDF.mkt==='us'?'米国はSECの四半期報告書（10-Q・10-K）の提出日で数えるので、決算発表から数週間遅れます。ガイダンスの上げ下げは下の開示一覧（Claudeが決算発表を読んだもの）で見てください。':TDF.mkt==='hk'?'香港にはXBRLが無いので、決算の数字はClaudeが決算発表を読んで入れたものです。':'')+'</p>';
-  }
-  h+='<h3 style="font-size:15px">週ごとの推移 <span class="small">'+(TDF.sec?esc(TDF.sec)+' <button class="chip" data-td="sec" data-s="">全業種に戻す</button>':'全業種')+'</span></h3>'+tdTrend(SX.fins,TDF.sec)+'</section>';
-
-  // 3) 保有・監視銘柄の開示（直近30日・重要度を問わず）
-  const minIts=its.filter(o=>mine[o.code]);
-  if(minIts.length) h+='<section><h3>保有・監視銘柄の開示 <span class="small">'+minIts.length+'件</span></h3>'+minIts.slice(0,30).map(o=>tdRow(o,mine)).join('')+'</section>';
-
-  // 4) 開示の一覧
-  let list=its.filter(o=>!TDF.date||o.d===TDF.date);
-  if(TDF.mine) list=list.filter(o=>mine[o.code]);
-  if(TDF.star) list=list.filter(o=>tdMark(tdKey(o))[1]);
-  if(TDF.unread) list=list.filter(o=>!tdMark(tdKey(o))[0]);
-  if(TDF.dir) list=list.filter(o=>o.dir===TDF.dir);
-  list=list.filter(o=>isNum(o.imp)?o.imp>=(TDF.hi?4:3):true);
-  const chip=(k,lab,v)=>'<button class="chip" data-td="flt" data-f="'+k+'"'+(v!==undefined?' data-v="'+v+'"':'')+' aria-pressed="'+(v!==undefined?TDF[k]===v:!!TDF[k])+'">'+lab+'</button>';
-  h+='<section><h3>開示の一覧 <span class="small">'+list.length+'件</span></h3><div class="chips">'+chip('hi','重要度4以上')+chip('dir','プラス','良い')+chip('dir','マイナス','悪い')+chip('mine','保有・監視')+chip('star','★気になる')+chip('unread','未読だけ')+'</div>'+
-    (list.length?list.slice(0,200).map(o=>tdRow(o,mine)).join(''):'<div class="empty">条件に合う開示はありません。</div>')+'</section>';
-  h+='<p class="small">数字の判定（業績修正・配当・決算短信・自社株買い）はPCのPythonがXBRL（日本はTDnet、米国はSECの10-Q・10-K）から出したもの（香港はXBRLが無いのですべてClaude）、それ以外はClaudeが本文を読んで判定したもの（判定元に表示）。このアプリでは判定し直さない。</p>';
-  app.innerHTML=h;
-}
-async function tdSetMark(k,code,patch){
-  const m=tdMark(k); const nx={read:m[0],star:m[1],memo:m[2]}; Object.assign(nx,patch);
-  TD.marks=TD.marks||{}; TD.marks[k]=[nx.read,nx.star,nx.memo,code||m[3]]; store.set('shk-tdnet',TD); renderTdnet(); tdCount();
-  try{ const j=await api('tdnetMark',Object.assign({key:k,code:code||m[3]},nx)); if(j.marks){TD.marks=j.marks; store.set('shk-tdnet',TD);} }
-  catch(e){ TDS.err='保存できませんでした：'+errText(e); renderTdnet(); }
-}
-app.addEventListener('click',e=>{ const b=e.target.closest('[data-td]'); if(!b||location.hash!=='#tdnet') return; e.preventDefault();
-  const a=b.dataset.td, k=b.dataset.k;
-  const it=k?(TD.items||[]).map(tdItem).find(o=>tdKey(o)===k):null, code=it?it.code:'';
-  if(a==='reload') readTdnet(true);
-  else if(a==='mkt'){ TDF.mkt=b.dataset.m; TDF.date=''; TDF.sec=''; tdSave(); renderTdnet(); }
-  else if(a==='win'){ TDF.win=+b.dataset.n; tdSave(); renderTdnet(); }
-  else if(a==='sec'){ TDF.sec=TDF.sec===b.dataset.s?'':b.dataset.s; tdSave(); renderTdnet(); }
-  else if(a==='flt'){ const f=b.dataset.f; if(b.dataset.v!==undefined) TDF[f]=TDF[f]===b.dataset.v?'':b.dataset.v; else TDF[f]=!TDF[f]; tdSave(); renderTdnet(); }
-  else if(a==='read') tdSetMark(k,code,{read:!tdMark(k)[0]});
-  else if(a==='star') tdSetMark(k,code,{star:!tdMark(k)[1]});
-  else if(a==='memo'){ TDS.open[k]=!TDS.open[k]; renderTdnet(); }
-  else if(a==='memosave'){ const ta=document.getElementById('tdm-'+k.replace(/[^0-9A-Za-z]/g,'')); TDS.open[k]=false; tdSetMark(k,b.dataset.code||code,{memo:ta?ta.value:''}); }
-});
-app.addEventListener('change',e=>{ if(e.target&&e.target.id==='tdDate'){ TDF.date=e.target.value; tdSave(); renderTdnet(); } });
+// 適時開示ウォッチは 2026-11-24 に別アプリ（kaiji/）へ独立した
 function renderModels(){
   setTab('models');
   const map=[
@@ -1351,7 +1185,7 @@ function renderSettings(){
     '<p class="small" style="margin:0">データはこの端末に保存され、オフラインでも見られます。元のスプレッドシートを更新したら下のボタンで取り込み直してください。</p>'+
     '<div class="actions"><button class="btn ghost" data-act="data-refresh"'+(S.busy||!cfg()?' disabled':'')+'>'+MKN[MK]+'のデータを取り込み直す</button></div></div></section>';
   h+='<section><h3>ホーム画面に追加</h3><div class="theo small"><span>iPhone：Safariでこのページを開き、共有ボタン →「ホーム画面に追加」。</span><span>Android：Chromeのメニュー（︙）→「ホーム画面に追加」または「アプリをインストール」。</span></div></section>';
-  h+='<p class="small"><a href="'+SHEET_URL+'">監視銘柄のスプレッドシートを開く</a></p>';
+  h+='<p class="small"><a href="'+SHEET_URL+'">監視銘柄のスプレッドシートを開く</a>　<a href="kaiji/">適時開示ウォッチ（別アプリ）を開く</a></p>';
   app.innerHTML=h;
 }
 app.addEventListener('click',async e=>{const b=e.target.closest('button[data-act]'); if(!b) return; const a=b.dataset.act;
@@ -1386,7 +1220,7 @@ document.addEventListener('click',e=>{const el=e.target.closest('button,.btn,.ch
   el.classList.add('tapped');setTimeout(()=>el.classList.remove('tapped'),250);try{navigator.vibrate&&navigator.vibrate(8)}catch(_){}},true);
 async function boot(){
   try{ SEC=await (await fetch('sectors.json')).json(); }catch(e){ SEC=null; }
-  brand(); tdCount(); if(cfg()) readTdnet();
+  brand();
   for(const m of ['jp','us','hk']){ try{ const v=await idbGet(IDB[m]); if(v&&v.s&&(v.market||'jp')===m) DS[m]=v; }catch(e){} }
   if(DS[MK]){
     try{prep()}catch(e){console.error('prep error',e);app.innerHTML='<div class="msg err">データ初期化でエラーが起きました。画面を再読み込みしてください。直らない場合は設定からデータを取り込み直してください。</div><div class="actions"><a class="btn ghost" href="#models">モデル解説</a><a class="btn" href="#settings">設定</a></div>';return}
@@ -1395,7 +1229,7 @@ async function boot(){
   if(cfg()){ app.innerHTML='<div class="loading">'+MKN[MK]+'のデータを取得しています…（初回は20〜40秒ほどかかります）</div>'; if(await fetchData()){route();readWatch();if(MK!=='jp'&&!DS.jp) fetchData('jp');return} }
   if(location.hash!=='#settings') location.hash='settings'; else renderSettings();
 }
-function route(){ if(location.hash==='#models'){renderModels();return} if(location.hash==='#tdnet'){renderTdnet();readTdnet();return} if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#watch'){renderWatch('watch');return} if(location.hash==='#hold'){renderWatch('hold');return} if(location.hash==='#search'){renderSearch();return} const m=location.hash.match(/^#s-([0-9A-Za-z.\-]+)$/); if(m){renderDetail(m[1].toUpperCase());return} location.hash='hold'; }
+function route(){ if(location.hash==='#models'){renderModels();return} if(location.hash==='#tdnet'){location.href='kaiji/';return} if(location.hash==='#settings'){renderSettings();return} if(!D){ if(!cfg()) location.hash='settings'; return } W.msg=null; if(location.hash==='#watch'){renderWatch('watch');return} if(location.hash==='#hold'){renderWatch('hold');return} if(location.hash==='#search'){renderSearch();return} const m=location.hash.match(/^#s-([0-9A-Za-z.\-]+)$/); if(m){renderDetail(m[1].toUpperCase());return} location.hash='hold'; }
 let t; qEl.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{if(qEl.value.trim()){if(location.hash!=='#search')location.hash='search';else renderSearch()}else location.hash='hold'},120)});
 qEl.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=qEl.value.trim().toUpperCase().normalize('NFKC');const hk=v.padStart(4,'0')+'.HK';const exact=BY[v]?v:BY[hk]?hk:null;if(exact){location.hash='s-'+exact;return}const m=D.s.find(s=>s._key.includes(v.toLowerCase()));if(m)location.hash='s-'+m.code}});
 mkEl.addEventListener('change',async()=>{ MK=mkEl.value; store.set('shk-mk',MK); D=DS[MK]||null; H=D&&D.h; brand(); shown=100; qEl.value='';
